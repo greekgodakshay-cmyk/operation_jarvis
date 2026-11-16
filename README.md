@@ -111,10 +111,48 @@ When a task enters `WAITING_FOR_APPROVAL`:
 | `GET` | `/api/v1/tools` | Enumerate all registered capabilities and permission levels |
 | `POST` | `/api/v1/chat` | Direct conversation with Qwen 3.5 augmented with memory retrieval |
 | `POST` | `/api/v1/voice/query` | Native voice endpoint compatible with `brain_router.py` |
+| `GET` | `/api/weather` | Authoritative live weather observations & forecasts via Open-Meteo |
+| `GET` | `/api/v1/weather` | Versioned live weather endpoint with geocoding & caching |
 
 ---
 
-## 5. DOCUMENTATION DIRECTORY
+## 5. LIVE WEATHER INTELLIGENCE (PART A)
+
+Operation JARVIS integrates Open-Meteo's geocoding and forecast services into the shared runtime:
+- **No API Key Required**: Fully functional, free-tier meteorological telemetry.
+- **Geocoding & Location Resolution**: Resolves explicit city names (e.g. "Tokyo", "London", "Bengaluru") with coordinates and local timezone. Defaults to user's workstation profile (`Bengaluru, Karnataka, India`, timezone `Asia/Kolkata`).
+- **Meteorological Observations**: Real-time temperature (°C), feels-like apparent temperature (°C), WMO weather condition descriptions, relative humidity (%), wind speed (km/h), precipitation (mm), and rain probability (%).
+- **Multi-Day Forecasting**: Structured today and tomorrow forecast breakdowns.
+- **Strict Evidence & Caching**: 10-minute in-memory caching with explicit provenance indicators (`[Live observation]` vs `[Cached observation from HH:MM]`). Never fabricates weather data on network failure.
+
+---
+
+## 6. MODULAR MULTI-AGENT ORCHESTRATION (PART B)
+
+The orchestrator coordinates 11 specialized agent execution roles backed by the local Qwen model:
+- `orchestrator`: High-level workflow planning, task decomposition, and final synthesis.
+- `researcher`: Live news retrieval, arXiv preprints, CVE vulnerability lookups, and weather intelligence.
+- `coder`: Multi-file patching, repository mapping, syntax verification, and bug fixing.
+- `workspace`: Directory structure discovery, file searches, and workspace inventory.
+- `tester`: Automated test suite execution, failure diagnosis, and outcome assertions.
+- `documenter`: Architectural documentation, README generation, ADR records, and API specs.
+- `git`: Git repository inspection, staging, committing, and GitHub remote synchronization.
+- `system_ops`: Desktop automation, host diagnostics, and PowerShell execution.
+- `memory`: Local persistent memory retrieval (SQLite FTS5, 1,102 memories) and ChatGPT archive search.
+- `reviewer`: Independent post-execution verification audits and artifact checks.
+
+---
+
+## 7. GIT & GITHUB SYNCHRONIZATION
+
+- **Local Repository**: Standalone Git repository anchored at `C:\Users\Akshay aravind .rv\operation_jarvis` on branch `main`.
+- **Remote Synchronization**: Synchronized with private GitHub repository [`greekgodakshay-cmyk/operation_jarvis`](https://github.com/greekgodakshay-cmyk/operation_jarvis).
+- **Authentication**: Authenticated via Windows Credential Manager (`git:https://github.com`) without exposing tokens in logs or code.
+- **Zero-Leak Security**: Strict `.gitignore` excludes all local databases (`*.db`), ChatGPT archives, personal memory, virtual environments (`.venv/`), and environment files (`.env`).
+
+---
+
+## 8. DOCUMENTATION DIRECTORY
 
 For in-depth architectural and operational specifications, consult:
 - [`ARCHITECTURE.md`](ARCHITECTURE.md): Comprehensive system design and lifecycle state machine.

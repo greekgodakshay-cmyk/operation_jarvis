@@ -36,15 +36,17 @@ class JarvisSettings(BaseModel):
     # Security & Path Jailing
     allowed_workspace_roots: List[Path] = Field(default_factory=lambda: [
         Path(r"C:\Users\Akshay aravind .rv\operation_jarvis"),
-        Path(r"C:\Users\Akshay aravind .rv\LOCAL_AI_MEMORY"),
-        Path(r"C:\Users\Akshay aravind .rv")
+        Path(r"C:\Users\Akshay aravind .rv\LOCAL_AI_MEMORY")
     ])
     forbidden_directories: List[str] = Field(default_factory=lambda: [
         r"C:\Windows",
         r"C:\Program Files",
         r"C:\Program Files (x86)",
         r"C:\System Volume Information",
-        r"C:\$Recycle.Bin"
+        r"C:\$Recycle.Bin",
+        r"C:\Users\Akshay aravind .rv\.ssh",
+        r"C:\Users\Akshay aravind .rv\.aws",
+        r"C:\Users\Akshay aravind .rv\.gnupg"
     ])
     
     # API & Networking
