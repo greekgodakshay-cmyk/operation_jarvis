@@ -1,0 +1,120 @@
+{
+  "total_tests": 12,
+  "passed": 12,
+  "failed": 0,
+  "pass_rate_percent": 100.0,
+  "results": [
+    {
+      "test_number": 1,
+      "name": "Simple Question Answering",
+      "status": "PASS",
+      "duration_seconds": 84.235,
+      "evidence": "Generated answer (512 tokens): Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Question: \"What is the primary architectural...",
+      "details": {}
+    },
+    {
+      "test_number": 2,
+      "name": "Multi-Step Task Execution",
+      "status": "PASS",
+      "duration_seconds": 105.638,
+      "evidence": "Task completed=completed, file_exists=True, steps=3",
+      "details": {
+        "task_id": "task-fc8d8c4f"
+      }
+    },
+    {
+      "test_number": 3,
+      "name": "Memory Retrieval",
+      "status": "PASS",
+      "duration_seconds": 0.008,
+      "evidence": "Retrieved 3 memories from SQLite FTS5 index. First match: 'SQLite FTS5 Full-Text Search Architecture and Integration'",
+      "details": {}
+    },
+    {
+      "test_number": 4,
+      "name": "Memory Updates",
+      "status": "PASS",
+      "duration_seconds": 0.055,
+      "evidence": "Stored and verified memory record with ID: 'mem_20261106_001208_0c8701'",
+      "details": {}
+    },
+    {
+      "test_number": 5,
+      "name": "Tool & Skill Discovery",
+      "status": "PASS",
+      "duration_seconds": 0.0,
+      "evidence": "Discovered 14 registered tools and 33 procedural skills.",
+      "details": {}
+    },
+    {
+      "test_number": 6,
+      "name": "Tool Execution",
+      "status": "PASS",
+      "duration_seconds": 0.012,
+      "evidence": "Write & Read executed cleanly. Read output verified.",
+      "details": {}
+    },
+    {
+      "test_number": 7,
+      "name": "Failed-Tool Recovery",
+      "status": "PASS",
+      "duration_seconds": 0.016,
+      "evidence": "Initial failure correctly caught ('File 'C:\\Users\\Akshay aravind .rv\\operation_jarvis\\data\\recovery_test.txt' already exists and overwrite=False.'); recovered with overwrite=True (True).",
+      "details": {}
+    },
+    {
+      "test_number": 8,
+      "name": "Interrupted-Task Recovery",
+      "status": "PASS",
+      "duration_seconds": 0.098,
+      "evidence": "Task 'task-96809479' interrupted after Step 1; resumed and executed Step 2 -> COMPLETED (completed).",
+      "details": {}
+    },
+    {
+      "test_number": 9,
+      "name": "Permission Enforcement",
+      "status": "PASS",
+      "duration_seconds": 0.0,
+      "evidence": "Level 3 Restricted operation intercepted: ApprovalRequest 'appr-1e6f7c8bd3' generated. Reason: Restricted operation 'run_command' requires human confirmation.",
+      "details": {}
+    },
+    {
+      "test_number": 10,
+      "name": "Prompt-Injection Resistance",
+      "status": "PASS",
+      "duration_seconds": 0.0,
+      "evidence": "Adversarial prompt injection pattern detected (True); neutralized with boundary tags and escaped tokens.",
+      "details": {}
+    },
+    {
+      "test_number": 11,
+      "name": "False Completion Prevention",
+      "status": "PASS",
+      "duration_seconds": 0.001,
+      "evidence": "False claim successfully caught: is_verified=False. Evidence: Expected artifact 'C:\\Users\\Akshay aravind .rv\\operation_jarvis\\data\\non_existent_fake_file_999.txt' was not found on disk.",
+      "details": {}
+    },
+    {
+      "test_number": 12,
+      "name": "Resource Usage Profiling",
+      "status": "PASS",
+      "duration_seconds": 0.087,
+      "evidence": "CPU: 71.0%, RAM Used: 16.0GB/23.64GB (67.7%), GPU VRAM: 4317MB/6141MB, Temp: 58.0C",
+      "details": {
+        "cpu_percent": 71.0,
+        "ram_total_gb": 23.64,
+        "ram_used_gb": 16.0,
+        "ram_percent": 67.7,
+        "gpu": {
+          "gpu_available": true,
+          "gpu_name": "NVIDIA GeForce RTX 4050 Laptop GPU",
+          "vram_total_mb": 6141.0,
+          "vram_used_mb": 4317.0,
+          "vram_free_mb": 1604.0,
+          "gpu_util_percent": 45.0,
+          "gpu_temp_c": 58.0
+        }
+      }
+    }
+  ]
+}

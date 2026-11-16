@@ -1,0 +1,282 @@
+"""
+Ollama / Qwen 3.5 9B Robust Client & Optional OpenRouter Bridge for Operation Jarvis.
+Supports Structured JSON output, Tool Calling, Thinking Tag Extraction,
+Token Profiling, Model Attribution, and Privacy-Guarded Cloud Fallbacks.
+"""
+import json
+import os
+import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
+import httpx
+from config.settings import settings
+from core.model_router import model_router, ModelTier
+
+class LLMClientError(Exception):
+    pass
+
+class OllamaLLMClient:
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
+        self.base_url = (base_url or settings.ollama_api_url).rstrip("/")
+        self.model = model or settings.primary_model
+        timeout_cfg = httpx.Timeout(timeout=300.0, connect=30.0)
+        self.client = httpx.Client(base_url=self.base_url, timeout=timeout_cfg)
+        self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "")
+
+    def is_healthy(self) -> bool:
+        try:
+            resp = self.client.get("/api/tags")
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def is_openrouter_configured(self) -> bool:
+        return bool(self.openrouter_api_key and self.openrouter_api_key.startswith("sk-or-"))
+
+    def extract_clean_content(self, raw_text: str) -> str:
+        """
+        Strips internal reasoning / <think> tags emitted by models while ensuring
+        the actual conclusion, structured answer, or explanation is NEVER destroyed.
+        """
+        if not raw_text:
+            return ""
+
+        text = raw_text.strip()
+
+        # Case 1: Closed <think>...</think> block exists
+        if "<think>" in text and "</think>" in text:
+            # Check if there is content outside the think tags
+            clean_outside = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL).strip()
+            if clean_outside:
+                text = clean_outside
+            else:
+                # The model put its entire answer inside the <think> tag
+                inside = re.findall(r"<think>(.*?)</think>", text, flags=re.DOTALL)
+                text = "\n\n".join(inside).strip()
+
+        # Case 2: Unclosed <think> tag (e.g. model reached token limit or omitted closing tag)
+        elif "<think>" in text:
+            inner = text.split("<think>", 1)[1]
+            # Look for answer transitions
+            marker_match = re.search(
+                r"(\n\s*(?:###?\s*)?(?:Answer|Conclusion|Summary|Recommendation|Response|Result|Solution)[:\s].*)",
+                inner,
+                flags=re.DOTALL | re.IGNORECASE
+            )
+            if marker_match and len(marker_match.group(1).strip()) > 10:
+                text = marker_match.group(1).strip()
+            else:
+                # Strip the <think> tag and keep the text so the answer is never destroyed
+                text = inner.strip()
+
+        # Case 3: Strip 'Thinking Process: ...' / 'Reasoning Process: ...' or 'Analyze the Request' blocks if a separate answer follows
+        think_proc_match = re.search(
+            r"^(?:Thinking Process|Reasoning Process|(?:\d+\.\s*)?\*\*(?:Analyze the Request|Thinking Process|Reasoning Process)\*\*):\s*.*?\n\s*\n(.*)",
+            text,
+            flags=re.DOTALL | re.IGNORECASE
+        )
+        if think_proc_match and len(think_proc_match.group(1).strip()) > 15:
+            text = think_proc_match.group(1).strip()
+        else:
+            text = re.sub(r"^(?:Thinking Process|Reasoning Process):\s*", "", text, flags=re.IGNORECASE).strip()
+
+        # Clean any remaining tags
+        text = text.replace("</think>", "").replace("<think>", "").strip()
+        return text
+
+    def extract_json(self, text: str) -> Dict[str, Any]:
+        """Extracts JSON object from markdown code fences or raw string."""
+        clean = self.extract_clean_content(text)
+        
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, flags=re.DOTALL)
+        if fence_match:
+            try:
+                return json.loads(fence_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        brace_match = re.search(r"(\{.*\})", clean, flags=re.DOTALL)
+        if brace_match:
+            try:
+                return json.loads(brace_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        raise LLMClientError(f"Failed to parse valid JSON from LLM output:\n{clean}")
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        model: Optional[str] = None,
+        tools: Optional[List[Dict[str, Any]]] = None,
+        format_json: bool = False,
+        temperature: Optional[float] = None,
+        num_predict: Optional[int] = None,
+        max_retries: int = 3,
+        allow_cloud: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Sends chat completion request to local Ollama or OpenRouter.
+        Returns parsed message dict with content, attribution, duration, and token usage.
+        """
+        target_model = model or self.model
+        
+        # Check if cloud model is requested
+        is_cloud_request = allow_cloud and ("/" in target_model or "claude" in target_model.lower() or "gemini" in target_model.lower())
+        
+        if is_cloud_request:
+            if not self.is_openrouter_configured():
+                # Graceful fallback to local model
+                target_model = settings.primary_model
+            else:
+                try:
+                    return self._chat_openrouter(messages, target_model, temperature, num_predict)
+                except Exception as ex:
+                    # Cloud failed, fallback to local Ollama
+                    target_model = settings.primary_model
+
+        # Execute on Local Ollama
+        return self._chat_ollama(messages, target_model, tools, format_json, temperature, num_predict, max_retries)
+
+    def _chat_ollama(
+        self,
+        messages: List[Dict[str, str]],
+        model_name: str,
+        tools: Optional[List[Dict[str, Any]]],
+        format_json: bool,
+        temperature: Optional[float],
+        num_predict: Optional[int],
+        max_retries: int
+    ) -> Dict[str, Any]:
+        payload: Dict[str, Any] = {
+            "model": model_name,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature if temperature is not None else settings.temperature,
+                "num_predict": num_predict if num_predict is not None else settings.max_tokens
+            }
+        }
+        if format_json:
+            payload["format"] = "json"
+        if tools:
+            payload["tools"] = tools
+
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                start_time = time.time()
+                resp = self.client.post("/api/chat", json=payload)
+                duration = time.time() - start_time
+
+                if resp.status_code != 200:
+                    raise LLMClientError(f"Ollama returned HTTP {resp.status_code}: {resp.text}")
+
+                data = resp.json()
+                msg = data.get("message", {})
+                raw_content = msg.get("content", "")
+                thinking = msg.get("thinking", "")
+
+                raw_text = raw_content.strip()
+                if raw_text:
+                    clean_content = self.extract_clean_content(raw_text)
+                elif thinking.strip():
+                    clean_content = self.extract_clean_content(thinking.strip())
+                else:
+                    clean_content = "Response completed with no content."
+
+                prompt_eval = data.get("prompt_eval_count", 0)
+                eval_count = data.get("eval_count", 0)
+
+                # Record usage in model router tracker
+                model_router.usage_tracker.record_usage(
+                    model_name=model_name,
+                    prompt_tokens=prompt_eval,
+                    completion_tokens=eval_count,
+                    is_cloud=False,
+                    cost_usd=0.0
+                )
+
+                return {
+                    "role": msg.get("role", "assistant"),
+                    "content": clean_content,
+                    "raw_content": raw_content or thinking,
+                    "thinking": thinking,
+                    "tool_calls": msg.get("tool_calls", []),
+                    "duration_seconds": round(duration, 3),
+                    "prompt_eval_count": prompt_eval,
+                    "eval_count": eval_count,
+                    "model_used": model_name,
+                    "is_cloud": False,
+                    "provider": "ollama_local"
+                }
+            except Exception as e:
+                last_error = e
+                time.sleep(1.0 * attempt)
+
+        raise LLMClientError(f"Local Ollama chat failed after {max_retries} attempts: {last_error}")
+
+    def _chat_openrouter(
+        self,
+        messages: List[Dict[str, str]],
+        model_name: str,
+        temperature: Optional[float],
+        num_predict: Optional[int]
+    ) -> Dict[str, Any]:
+        """Calls OpenRouter API with spending tracking and timeout."""
+        if model_router.usage_tracker.is_spending_limit_reached():
+            raise LLMClientError("OpenRouter spending limit reached ($5.00 limit). Refusing cloud execution.")
+
+        headers = {
+            "Authorization": f"Bearer {self.openrouter_api_key}",
+            "HTTP-Referer": "http://127.0.0.1:8000",
+            "X-Title": "Operation Jarvis Local Workstation",
+            "Content-Type": "application/json"
+        }
+        body = {
+            "model": model_name,
+            "messages": messages,
+            "temperature": temperature if temperature is not None else 0.3,
+            "max_tokens": num_predict if num_predict is not None else 2048
+        }
+
+        start_time = time.time()
+        with httpx.Client(timeout=60.0) as or_client:
+            resp = or_client.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+            duration = time.time() - start_time
+
+            if resp.status_code != 200:
+                raise LLMClientError(f"OpenRouter returned HTTP {resp.status_code}: {resp.text}")
+
+            data = resp.json()
+            choice = data["choices"][0]["message"]
+            usage = data.get("usage", {})
+            prompt_tokens = usage.get("prompt_tokens", 0)
+            comp_tokens = usage.get("completion_tokens", 0)
+            
+            # Approximate cost ($3/M tokens)
+            cost = ((prompt_tokens * 0.003) + (comp_tokens * 0.015)) / 1000.0
+            model_router.usage_tracker.record_usage(
+                model_name=model_name,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=comp_tokens,
+                is_cloud=True,
+                cost_usd=cost
+            )
+
+            return {
+                "role": choice.get("role", "assistant"),
+                "content": choice.get("content", ""),
+                "raw_content": choice.get("content", ""),
+                "thinking": "",
+                "tool_calls": choice.get("tool_calls", []),
+                "duration_seconds": round(duration, 3),
+                "prompt_eval_count": prompt_tokens,
+                "eval_count": comp_tokens,
+                "model_used": model_name,
+                "is_cloud": True,
+                "provider": "openrouter_cloud",
+                "cost_usd": round(cost, 5)
+            }
+
+llm_client = OllamaLLMClient()

@@ -1,0 +1,200 @@
+"""
+Master Autonomous Agent Orchestrator for Operation Jarvis.
+Executes the full lifecycle: Receive -> Understand -> Retrieve -> Plan -> Tool Loop ->
+Observe -> Self-Correct -> Verify -> Store -> Report.
+"""
+import time
+from typing import Any, Dict, List, Optional
+from config.settings import settings
+from core.types import (
+    TaskRecord, TaskStatus, TaskPlan, ExecutionStep,
+    StepStatus, ToolCall, ToolResult, VerificationResult, ApprovalRequest
+)
+from core.dynamic_planner import dynamic_planner
+from core.verification import verification_engine
+from core.self_correction import self_correction_engine
+from core.llm_client import llm_client
+from registry.capability_registry import capability_registry
+from registry.memory_adapter import memory_adapter
+from storage.task_db import task_db
+from storage.audit_logger import audit_logger
+from security.policy_engine import ApprovalRequiredError
+
+class JarvisOrchestrator:
+    def __init__(self):
+        self.db = task_db
+        self.logger = audit_logger
+        self.planner = dynamic_planner
+        self.verifier = verification_engine
+        self.corrector = self_correction_engine
+
+    def execute_objective(
+        self,
+        objective: str,
+        task_id: Optional[str] = None,
+        approval_token: Optional[str] = None
+    ) -> TaskRecord:
+        """Entry point for executing a new objective."""
+        record = self.db.create_task(objective=objective, task_id=task_id)
+        self.logger.log_event(
+            task_id=record.task_id,
+            event_type="objective_received",
+            details={"objective": objective}
+        )
+        return self._run_execution_loop(record.task_id, approval_token=approval_token)
+
+    def resume_task(self, task_id: str, approval_token: Optional[str] = None) -> TaskRecord:
+        """Resumes an interrupted or approval-paused task."""
+        record = self.db.get_task(task_id)
+        if not record:
+            raise ValueError(f"Task '{task_id}' not found.")
+
+        self.logger.log_event(
+            task_id=task_id,
+            event_type="task_resumed",
+            details={"previous_status": record.status.value, "approval_token": approval_token}
+        )
+        return self._run_execution_loop(task_id, resume=True, approval_token=approval_token)
+
+    def cancel_task(self, task_id: str, reason: str = "User cancelled.") -> TaskRecord:
+        self.db.update_task_status(task_id, TaskStatus.CANCELLED, error=reason)
+        self.logger.log_event(
+            task_id=task_id,
+            event_type="task_cancelled",
+            details={"reason": reason}
+        )
+        return self.db.get_task(task_id)
+
+    def _run_execution_loop(
+        self,
+        task_id: str,
+        resume: bool = False,
+        approval_token: Optional[str] = None
+    ) -> TaskRecord:
+        task = self.db.get_task(task_id)
+        if not task:
+            raise ValueError(f"Task '{task_id}' does not exist.")
+
+        start_time = time.time()
+
+        # Step 1: Planning (generate plan if task has no plan yet, even if resuming)
+        if not task.plan or (not resume and not task.completed_steps):
+            self.db.update_task_status(task_id, TaskStatus.PLANNING)
+            self.logger.log_event(task_id, "planning_started", {"objective": task.objective})
+            
+            plan = self.planner.create_plan(task.objective)
+            self.db.save_plan(task_id, plan)
+            self.logger.log_event(task_id, "plan_generated", {
+                "reasoning": plan.reasoning,
+                "step_count": len(plan.steps)
+            })
+            task = self.db.get_task(task_id)
+
+        # Step 2: Step-by-Step Execution Loop
+        self.db.update_task_status(task_id, TaskStatus.RUNNING)
+        pending_steps = list(task.pending_steps)
+
+        for step in pending_steps:
+            # Check timeout
+            if (time.time() - start_time) > settings.task_timeout_seconds:
+                err_msg = f"Task timed out after {settings.task_timeout_seconds} seconds."
+                self.db.update_task_status(task_id, TaskStatus.FAILED, error=err_msg)
+                return self.db.get_task(task_id)
+
+            # Check if task was cancelled externally
+            current_state = self.db.get_task(task_id)
+            if current_state.status == TaskStatus.CANCELLED:
+                return current_state
+
+            # Execute Step with Bounded Retries & Self-Correction
+            step_success = False
+            last_result: Optional[ToolResult] = None
+
+            while not step_success and step.retry_count <= settings.max_retries_per_step:
+                if not step.tool_name:
+                    # Non-tool reasoning / synthesis step
+                    step_success = True
+                    last_result = ToolResult(
+                        call_id=f"step-{step.step_number}-synth",
+                        tool_name="reasoning",
+                        success=True,
+                        output=f"Reasoned: {step.description}"
+                    )
+                    break
+
+                try:
+                    # Execute tool call via capability registry
+                    result = capability_registry.execute_tool(
+                        name=step.tool_name,
+                        arguments=step.tool_arguments,
+                        task_id=task_id,
+                        step_number=step.step_number,
+                        approval_token=approval_token
+                    )
+                    last_result = result
+
+                    # Verify step output
+                    verif = self.verifier.verify_step_result(step, result)
+                    step.verification = verif
+
+                    if verif.is_verified:
+                        step_success = True
+                        step.status = StepStatus.COMPLETED
+                        step.result = result
+                        break
+                    else:
+                        # Attempt self-correction
+                        if self.corrector.should_retry(step, result, settings.max_retries_per_step):
+                            self.db.update_task_status(task_id, TaskStatus.RECOVERING)
+                            self.logger.log_event(task_id, "recovery_attempt", {
+                                "step": step.step_number,
+                                "retry_count": step.retry_count,
+                                "error": result.error
+                            })
+                            step = self.corrector.formulate_recovery_step(step, result)
+                        else:
+                            step.status = StepStatus.FAILED
+                            step.error_message = f"Verification failed: {verif.evidence}"
+                            break
+
+                except ApprovalRequiredError as e:
+                    # Level 3 gate: transition to WAITING_FOR_APPROVAL and safely halt
+                    self.db.record_approval_request(e.approval_request)
+                    self.logger.log_event(task_id, "approval_required", {
+                        "request_id": e.approval_request.request_id,
+                        "tool": e.approval_request.tool_name,
+                        "reason": e.approval_request.reason
+                    })
+                    return self.db.get_task(task_id)
+
+                except Exception as ex:
+                    step.status = StepStatus.FAILED
+                    step.error_message = str(ex)
+                    break
+
+            # Record step completion in durable DB
+            self.db.record_step_progress(task_id, step, tool_result=last_result)
+
+            if not step_success:
+                err = f"Step {step.step_number} ('{step.description}') failed. {step.error_message}"
+                self.db.update_task_status(task_id, TaskStatus.FAILED, error=err)
+                return self.db.get_task(task_id)
+
+        # Step 3: Final Verification & Evidence Aggregation
+        final_task_record = self.db.get_task(task_id)
+        final_verif = self.verifier.verify_final_objective(
+            objective=final_task_record.objective,
+            completed_steps=final_task_record.completed_steps,
+            errors=final_task_record.errors
+        )
+
+        outcome_text = f"Objective verified and completed successfully in {len(final_task_record.completed_steps)} steps."
+        self.db.complete_task(task_id, final_verif, outcome_text)
+        self.logger.log_event(task_id, "task_completed", {
+            "verified": final_verif.is_verified,
+            "evidence": final_verif.evidence
+        })
+
+        return self.db.get_task(task_id)
+
+orchestrator = JarvisOrchestrator()

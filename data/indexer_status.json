@@ -1,0 +1,24 @@
+{
+  "ok": true,
+  "timestamp": "2026-11-06T07:18:45.604651+00:00",
+  "new_items_indexed": 0,
+  "duration_seconds": 1.79,
+  "sources_evaluated": 3,
+  "details": [
+    {
+      "source": "arXiv AI & Machine Learning Research",
+      "fetched": 3,
+      "newly_indexed": 0
+    },
+    {
+      "source": "HackerNews Technology Announcements",
+      "fetched": 3,
+      "newly_indexed": 0
+    },
+    {
+      "source": "CIRCL / NVD Security Advisories",
+      "fetched": 0,
+      "newly_indexed": 0
+    }
+  ]
+}

@@ -1,0 +1,78 @@
+"""
+Command Validation and Shell Execution Policy.
+Analyzes, classifies, and restricts command executions.
+"""
+import re
+import shlex
+from typing import Tuple
+from core.types import PermissionLevel
+
+DANGEROUS_PATTERNS = [
+    re.compile(r"\bformat\b", re.IGNORECASE),
+    re.compile(r"\bdiskpart\b", re.IGNORECASE),
+    re.compile(r"\bdel\s+/[fsq\s]*[a-z]:\\", re.IGNORECASE),
+    re.compile(r"\brmdir\s+/[sq\s]*[a-z]:\\", re.IGNORECASE),
+    re.compile(r"\brm\s+-rf\s+/[^\w]", re.IGNORECASE),
+    re.compile(r"\bSet-MpPreference\b", re.IGNORECASE),
+    re.compile(r"\bDisableRealtimeMonitoring\b", re.IGNORECASE),
+    re.compile(r"\bnetsh\s+firewall\b", re.IGNORECASE),
+    re.compile(r"\bnetsh\s+advfirewall\b", re.IGNORECASE),
+    re.compile(r"\bStop-Service\s+(wuauserv|windefend|mpssvc)\b", re.IGNORECASE),
+    re.compile(r"\b(invoke-webrequest|iwr|curl|wget)\b.*\|\s*(iex|invoke-expression|powershell|cmd)", re.IGNORECASE),
+    re.compile(r"\b(shutdown|restart-computer)\b", re.IGNORECASE),
+    re.compile(r"\bdrop\s+database\b", re.IGNORECASE),
+]
+
+SAFE_COMMANDS = {
+    "dir", "ls", "echo", "type", "cat", "git status", "git log", "git diff", "git branch",
+    "python --version", "uv --version", "node -v", "npm -v", "pytest", "ollama list",
+    "nvidia-smi", "whoami", "hostname", "pwd"
+}
+
+CONTROLLED_PREFIXES = [
+    "python ", "uv run ", "pytest ", "npm test ", "git add ", "git commit ", "git checkout "
+]
+
+class CommandValidationError(Exception):
+    pass
+
+class CommandValidator:
+    def validate_and_classify(self, cmd_string: str) -> Tuple[bool, PermissionLevel, str]:
+        """
+        Validates a command line string.
+        Returns: (is_allowed, permission_level, reason)
+        """
+        stripped = cmd_string.strip()
+        if not stripped:
+            return False, PermissionLevel.LEVEL_1_SAFE, "Empty command is not executable."
+
+        # Check for explicitly dangerous / system destructive patterns
+        for pattern in DANGEROUS_PATTERNS:
+            if pattern.search(stripped):
+                return False, PermissionLevel.LEVEL_3_RESTRICTED, f"Command contains forbidden destructive pattern: {pattern.pattern}"
+
+        # Level 1 Safe inspection commands
+        normalized = " ".join(stripped.split()).lower()
+        if normalized in SAFE_COMMANDS or any(normalized.startswith(s + " ") for s in SAFE_COMMANDS):
+            return True, PermissionLevel.LEVEL_1_SAFE, "Standard safe inspection command."
+
+        # Level 2 Controlled commands (e.g. running pytest, python script, git operations)
+        if any(normalized.startswith(p) for p in CONTROLLED_PREFIXES):
+            return True, PermissionLevel.LEVEL_2_CONTROLLED, "Approved script or testing command."
+
+        # Anything modifying files or running arbitrary scripts is at least Level 2
+        # Destructive file deletion or complex pipelines default to Level 3 Restricted
+        if any(w in normalized for w in ["del ", "remove-item", "rm ", "erase ", "drop ", "kill ", "stop-process"]):
+            return True, PermissionLevel.LEVEL_3_RESTRICTED, "Deletion or termination command requires Level 3 Restricted authorization."
+
+        # External communication, port scanning, and network manipulation require Level 3 Restricted authorization
+        if any(w in normalized for w in [
+            "curl -x post", "curl -d ", "curl --data", "invoke-webrequest -method post",
+            "invoke-restmethod -method post", "nmap ", "masscan ", "nc ", "ncat ", "socat ",
+            "ssh ", "scp ", "ftp ", "telnet ", "net user /add"
+        ]):
+            return True, PermissionLevel.LEVEL_3_RESTRICTED, "External network operation or security scanning requires Level 3 Restricted authorization."
+
+        return True, PermissionLevel.LEVEL_2_CONTROLLED, "General workspace command requiring Level 2 Controlled execution."
+
+command_validator = CommandValidator()

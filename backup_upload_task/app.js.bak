@@ -1,0 +1,316 @@
+// Operation JARVIS — Android Remote PWA Controller
+
+let sessionToken = localStorage.getItem("jarvis_mobile_token") || null;
+let speechRecognizer = null;
+let currentTranscript = "";
+let isRecording = false;
+
+document.addEventListener("DOMContentLoaded", () => {
+  registerServiceWorker();
+  initSpeechRecognition();
+  checkAuthAndConnect();
+  setInterval(checkStatus, 5000);
+});
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/pwa/service-worker.js")
+      .then(() => console.log("JARVIS PWA ServiceWorker registered"))
+      .catch(err => console.warn("ServiceWorker registration failed:", err));
+  }
+}
+
+function checkAuthAndConnect() {
+  if (!sessionToken) {
+    document.getElementById("pairingScreen").style.display = "flex";
+    document.getElementById("mainView").style.display = "none";
+  } else {
+    document.getElementById("pairingScreen").style.display = "none";
+    document.getElementById("mainView").style.display = "flex";
+    checkStatus();
+  }
+}
+
+async function pairDevice() {
+  const key = document.getElementById("inputPairingKey").value.trim();
+  if (!key) return;
+
+  try {
+    const res = await fetch("/api/v1/mobile/auth/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pairing_key: key })
+    });
+    if (!res.ok) throw new Error("Invalid pairing key");
+    const data = await res.json();
+    sessionToken = data.session_token;
+    localStorage.setItem("jarvis_mobile_token", sessionToken);
+    checkAuthAndConnect();
+  } catch (err) {
+    alert(`Pairing failed: ${err.message}`);
+  }
+}
+
+async function checkStatus() {
+  if (!sessionToken) return;
+
+  try {
+    const res = await fetch("/api/v1/mobile/status", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    if (res.status === 401) {
+      sessionToken = null;
+      localStorage.removeItem("jarvis_mobile_token");
+      checkAuthAndConnect();
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    document.getElementById("offlineNotice").style.display = "none";
+    const dot = document.getElementById("statusDot");
+    dot.className = data.status === "online" ? "status-dot online" : "status-dot offline";
+
+    // Pending approvals banner
+    const banner = document.getElementById("pendingApprovalsBanner");
+    if (data.pending_approvals_count > 0) {
+      banner.style.display = "flex";
+      document.getElementById("pendingCount").textContent = data.pending_approvals_count;
+    } else {
+      banner.style.display = "none";
+    }
+  } catch (err) {
+    console.warn("Workstation ping failed:", err);
+    document.getElementById("offlineNotice").style.display = "block";
+    document.getElementById("statusDot").className = "status-dot offline";
+  }
+}
+
+function initSpeechRecognition() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRec) {
+    speechRecognizer = new SpeechRec();
+    speechRecognizer.continuous = false;
+    speechRecognizer.interimResults = true;
+    speechRecognizer.lang = "en-US";
+
+    speechRecognizer.onresult = event => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          currentTranscript += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      if (interim) {
+        document.getElementById("pttStatus").textContent = `"${interim.slice(-25)}"`;
+      }
+    };
+
+    speechRecognizer.onerror = event => {
+      console.warn("Speech recognition error:", event.error);
+    };
+
+    speechRecognizer.onend = () => {
+      if (isRecording) {
+        dispatchVoiceQuery(currentTranscript);
+        isRecording = false;
+        resetPttButton();
+      }
+    };
+  }
+}
+
+function startPtt(event) {
+  if (event) event.preventDefault();
+  if (isRecording) return;
+  isRecording = true;
+  currentTranscript = "";
+
+  const btn = document.getElementById("btnPtt");
+  btn.classList.add("active");
+  document.getElementById("pttStatus").textContent = "LISTENING...";
+
+  // Play subtle haptic feedback on supported Android devices
+  if (navigator.vibrate) navigator.vibrate(40);
+
+  if (speechRecognizer) {
+    try {
+      speechRecognizer.start();
+    } catch (e) {
+      console.warn("Recognizer already started");
+    }
+  }
+}
+
+function stopPtt(event) {
+  if (event) event.preventDefault();
+  if (!isRecording) return;
+
+  const btn = document.getElementById("btnPtt");
+  btn.classList.remove("active");
+  document.getElementById("pttStatus").textContent = "TRANSMITTING...";
+
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  if (speechRecognizer) {
+    try {
+      speechRecognizer.stop();
+    } catch (e) {}
+  } else {
+    // If Web Speech API not supported on browser, prompt user
+    isRecording = false;
+    resetPttButton();
+    const promptText = prompt("Web Speech API not supported. Enter instruction for JARVIS:");
+    if (promptText) dispatchVoiceQuery(promptText);
+  }
+}
+
+function resetPttButton() {
+  document.getElementById("btnPtt").classList.remove("active");
+  document.getElementById("pttStatus").textContent = "HOLD TO TALK";
+}
+
+async function dispatchVoiceQuery(text) {
+  const clean = text.trim();
+  if (!clean) {
+    resetPttButton();
+    return;
+  }
+
+  appendChatMessage("user", clean);
+  document.getElementById("pttStatus").textContent = "JARVIS REASONING...";
+
+  try {
+    const res = await fetch("/api/v1/mobile/voice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify({
+        transcript: clean,
+        auto_speak: true,
+        voice: "bm_george"
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    appendChatMessage("jarvis", data.response_text);
+
+    // Play Kokoro synthesized audio if available
+    if (data.audio_url) {
+      playAudioResponse(`${data.audio_url}?token=${sessionToken}`);
+    }
+  } catch (err) {
+    appendChatMessage("jarvis", `Connection error: ${err.message}. Verify laptop is on.`);
+  } finally {
+    resetPttButton();
+  }
+}
+
+function playAudioResponse(url) {
+  const player = document.getElementById("audioPlayer");
+  player.src = url;
+  player.play().catch(e => console.warn("Autoplay prevented:", e));
+}
+
+function sendTextMessage() {
+  const input = document.getElementById("inputTextFallback");
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = "";
+  dispatchVoiceQuery(val);
+}
+
+function appendChatMessage(sender, text) {
+  const feed = document.getElementById("chatFeed");
+  const msgDiv = document.createElement("div");
+  msgDiv.className = `chat-msg ${sender === 'user' ? 'user-msg' : 'jarvis-msg'}`;
+
+  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  msgDiv.innerHTML = `
+    <div class="msg-bubble">${escapeHtml(text)}</div>
+    <span class="msg-time">${timeStr}</span>
+  `;
+  feed.appendChild(msgDiv);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+async function showApprovalsModal() {
+  const modal = document.getElementById("approvalsModal");
+  const body = document.getElementById("modalApprovalsList");
+  body.innerHTML = '<p class="text-muted">Loading pending tasks...</p>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch("/api/v1/mobile/tasks/pending", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    const data = await res.json();
+    if (!data.tasks || data.tasks.length === 0) {
+      body.innerHTML = '<p>No pending approvals.</p>';
+      return;
+    }
+    body.innerHTML = data.tasks.map(t => `
+      <div style="background:#131d31; padding:12px; border-radius:6px; margin-bottom:10px;">
+        <div style="font-size:11px; color:#94a3b8;">Task ID: <code>${t.task_id}</code></div>
+        <div style="font-weight:600; margin:6px 0;">${escapeHtml(t.objective)}</div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn-primary" style="flex:1;" onclick="resolveMobileTask('${t.task_id}', true)">Authorize</button>
+          <button class="estop-btn" style="flex:1;" onclick="resolveMobileTask('${t.task_id}', false)">Deny</button>
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    body.innerHTML = `<p>Error: ${err.message}</p>`;
+  }
+}
+
+function closeApprovalsModal() {
+  document.getElementById("approvalsModal").style.display = "none";
+}
+
+async function resolveMobileTask(taskId, approved) {
+  try {
+    const res = await fetch(`/api/v1/mobile/tasks/${taskId}/resolve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify({ approved: approved })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showApprovalsModal();
+    checkStatus();
+  } catch (err) {
+    alert(`Action failed: ${err.message}`);
+  }
+}
+
+async function triggerMobileEmergencyStop() {
+  if (!confirm("TRIGGER WORKSTATION EMERGENCY STOP? All executions will halt!")) return;
+  try {
+    await fetch("/api/v1/mobile/emergency_stop", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    checkStatus();
+    alert("Emergency stop triggered.");
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}

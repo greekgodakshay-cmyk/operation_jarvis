@@ -1,0 +1,124 @@
+"""
+Ollama / Qwen 3.5 9B Robust Client for Operation Jarvis.
+Supports Structured JSON output, Tool Calling, Thinking Tag Extraction, and Token Profiling.
+"""
+import json
+import re
+import time
+from typing import Any, Dict, List, Optional, Tuple
+import httpx
+from config.settings import settings
+
+class LLMClientError(Exception):
+    pass
+
+class OllamaLLMClient:
+    def __init__(self, base_url: Optional[str] = None, model: Optional[str] = None):
+        self.base_url = (base_url or settings.ollama_api_url).rstrip("/")
+        self.model = model or settings.primary_model
+        timeout_cfg = httpx.Timeout(timeout=180.0, connect=30.0)
+        self.client = httpx.Client(base_url=self.base_url, timeout=timeout_cfg)
+
+    def is_healthy(self) -> bool:
+        try:
+            resp = self.client.get("/api/tags")
+            return resp.status_code == 200
+        except Exception:
+            return False
+
+    def extract_clean_content(self, raw_text: str) -> str:
+        """Strips <think>...</think> blocks emitted by reasoning models like Qwen 3.5."""
+        clean = re.sub(r"<think>.*?</think>", "", raw_text, flags=re.DOTALL).strip()
+        if not clean and "<think>" in raw_text:
+            # If model hit max tokens or only outputted inside <think>, extract inner content
+            inner = raw_text.replace("<think>", "").replace("</think>", "").strip()
+            return inner
+        return clean if clean else raw_text.strip()
+
+    def extract_json(self, text: str) -> Dict[str, Any]:
+        """Extracts JSON object from markdown code fences or raw string."""
+        clean = self.extract_clean_content(text)
+        
+        # Try finding markdown ```json ... ```
+        fence_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, flags=re.DOTALL)
+        if fence_match:
+            try:
+                return json.loads(fence_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        # Try finding raw outermost { ... }
+        brace_match = re.search(r"(\{.*\})", clean, flags=re.DOTALL)
+        if brace_match:
+            try:
+                return json.loads(brace_match.group(1))
+            except json.JSONDecodeError:
+                pass
+
+        raise LLMClientError(f"Failed to parse valid JSON from LLM output:\n{clean}")
+
+    def chat(
+        self,
+        messages: List[Dict[str, str]],
+        tools: Optional[List[Dict[str, Any]]] = None,
+        format_json: bool = False,
+        temperature: Optional[float] = None,
+        num_predict: Optional[int] = None,
+        max_retries: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Sends chat completion request to Ollama /api/chat.
+        Returns parsed message dict with content and optional tool_calls.
+        """
+        payload: Dict[str, Any] = {
+            "model": self.model,
+            "messages": messages,
+            "stream": False,
+            "options": {
+                "temperature": temperature if temperature is not None else settings.temperature,
+                "num_predict": num_predict if num_predict is not None else settings.max_tokens
+            }
+        }
+        if format_json:
+            payload["format"] = "json"
+        if tools:
+            payload["tools"] = tools
+
+        last_error = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                start_time = time.time()
+                resp = self.client.post("/api/chat", json=payload)
+                duration = time.time() - start_time
+
+                if resp.status_code != 200:
+                    raise LLMClientError(f"Ollama returned HTTP {resp.status_code}: {resp.text}")
+
+                data = resp.json()
+                msg = data.get("message", {})
+                raw_content = msg.get("content", "")
+                thinking = msg.get("thinking", "")
+
+                # If Ollama separated thinking and content is empty (e.g. budget reached in thinking)
+                if not raw_content and thinking:
+                    clean_content = thinking.strip()
+                else:
+                    clean_content = self.extract_clean_content(raw_content)
+
+                return {
+                    "role": msg.get("role", "assistant"),
+                    "content": clean_content,
+                    "raw_content": raw_content or thinking,
+                    "thinking": thinking,
+                    "tool_calls": msg.get("tool_calls", []),
+                    "duration_seconds": round(duration, 3),
+                    "prompt_eval_count": data.get("prompt_eval_count", 0),
+                    "eval_count": data.get("eval_count", 0)
+                }
+            except Exception as e:
+                last_error = e
+                time.sleep(1.0 * attempt)
+
+        raise LLMClientError(f"Chat failed after {max_retries} attempts: {last_error}")
+
+llm_client = OllamaLLMClient()

@@ -1,0 +1,297 @@
+"""
+Dedicated Secure Mobile API Adapter for Operation JARVIS Android Remote Access.
+Binds to 127.0.0.1 for private HTTPS tunneling through Tailscale Serve.
+Implements authenticated sessions, token-bucket rate limiting, push-to-talk voice
+dispatch, and Kokoro TTS speech streaming for mobile playback.
+"""
+
+import os
+import sys
+import time
+import uuid
+import json
+import subprocess
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+from collections import defaultdict
+
+from fastapi import APIRouter, Depends, HTTPException, Header, Query, Request, status
+from fastapi.responses import FileResponse, JSONResponse
+from pydantic import BaseModel, Field
+
+from config.settings import settings
+from core.types import TaskStatus
+from core.llm_client import llm_client
+from storage.task_db import task_db
+from security.policy_engine import policy_engine
+from registry.memory_adapter import memory_adapter
+
+mobile_router = APIRouter(prefix="/api/v1/mobile", tags=["Mobile Remote"])
+
+DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+AUTH_FILE = DATA_DIR / "mobile_auth.json"
+AUDIO_CACHE_DIR = DATA_DIR / "audio_cache"
+AUDIO_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+# --- Authentication & Session Management ---
+
+class MobileAuthManager:
+    def __init__(self):
+        self.pairing_key = self._load_or_create_key()
+        self.active_sessions: Dict[str, float] = {}  # token -> expires_at
+
+    def _load_or_create_key(self) -> str:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        if AUTH_FILE.exists():
+            try:
+                data = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
+                return data.get("pairing_key", "jarvis-victus-mobile-2026")
+            except Exception:
+                pass
+        key = "jarvis-victus-mobile-2026"
+        AUTH_FILE.write_text(json.dumps({"pairing_key": key}, indent=2), encoding="utf-8")
+        return key
+
+    def authenticate_pairing(self, key: str) -> Optional[str]:
+        if key == self.pairing_key:
+            token = f"mobsess_{uuid.uuid4().hex}"
+            # 7-day session validity
+            self.active_sessions[token] = time.time() + (7 * 86400)
+            return token
+        return None
+
+    def is_valid_session(self, token: Optional[str]) -> bool:
+        if not token:
+            return False
+        # Also allow direct pairing key for development/bootstrap
+        if token == self.pairing_key:
+            return True
+        exp = self.active_sessions.get(token)
+        if exp and exp > time.time():
+            return True
+        return False
+
+auth_manager = MobileAuthManager()
+
+# --- Rate Limiter (30 requests/minute sliding window) ---
+
+class MobileRateLimiter:
+    def __init__(self, max_requests: int = 30, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.history: Dict[str, List[float]] = defaultdict(list)
+
+    def check(self, client_id: str) -> bool:
+        now = time.time()
+        window_start = now - self.window_seconds
+        # Clean older entries
+        self.history[client_id] = [t for t in self.history[client_id] if t > window_start]
+        if len(self.history[client_id]) >= self.max_requests:
+            return False
+        self.history[client_id].append(now)
+        return True
+
+rate_limiter = MobileRateLimiter()
+
+# --- Dependency Verification ---
+
+def verify_mobile_auth(
+    request: Request,
+    authorization: Optional[str] = Header(None),
+    x_jarvis_mobile_token: Optional[str] = Header(None),
+    token: Optional[str] = Query(None)
+):
+    # Extract token
+    client_token = None
+    if x_jarvis_mobile_token:
+        client_token = x_jarvis_mobile_token
+    elif authorization and authorization.startswith("Bearer "):
+        client_token = authorization.split("Bearer ", 1)[1].strip()
+    elif token:
+        client_token = token
+
+    if not auth_manager.is_valid_session(client_token):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired mobile session token. Re-pair device."
+        )
+
+    # Rate limiting
+    client_ip = request.client.host if request.client else "127.0.0.1"
+    if not rate_limiter.check(client_token or client_ip):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Mobile rate limit exceeded (30 req/min). Please wait."
+        )
+    return client_token
+
+# --- Request / Response Models ---
+
+class MobilePairRequest(BaseModel):
+    pairing_key: str = Field(..., description="Secret workstation pairing key")
+
+class MobileVoiceRequest(BaseModel):
+    transcript: str = Field(..., description="Transcribed text from push-to-talk")
+    auto_speak: bool = Field(True, description="Whether to synthesize speech using Kokoro ONNX")
+    voice: Optional[str] = Field("bm_george", description="Kokoro voice persona")
+
+class MobileResolveRequest(BaseModel):
+    approved: bool = Field(..., description="True to authorize, False to deny")
+
+# --- Endpoints ---
+
+@mobile_router.post("/auth/pair")
+def mobile_pair(req: MobilePairRequest):
+    """Pairs an Android device with the local workstation using the pairing secret."""
+    session_token = auth_manager.authenticate_pairing(req.pairing_key)
+    if not session_token:
+        raise HTTPException(status_code=403, detail="Invalid pairing key.")
+    return {
+        "ok": True,
+        "session_token": session_token,
+        "expires_in": 7 * 86400,
+        "host": "HP Victus 15 (JARVIS Core)"
+    }
+
+@mobile_router.get("/status")
+def mobile_status(token: str = Depends(verify_mobile_auth)):
+    """Lightweight workstation and agent status for Android display."""
+    pending = task_db.list_tasks(status=TaskStatus.WAITING_FOR_APPROVAL)
+    mem_status = memory_adapter.get_status()
+
+    return {
+        "ok": True,
+        "status": "emergency_stopped" if policy_engine.is_emergency_stopped() else "online",
+        "emergency_stopped": policy_engine.is_emergency_stopped(),
+        "primary_model": "qwen-batman:latest",
+        "ollama_online": llm_client.is_healthy(),
+        "memory_nodes": mem_status.get("total_records", 1101),
+        "pending_approvals_count": len(pending),
+        "host_platform": "Windows 11 (HP Victus 15)"
+    }
+
+@mobile_router.post("/voice")
+def mobile_voice_query(req: MobileVoiceRequest, token: str = Depends(verify_mobile_auth)):
+    """
+    Push-to-talk handler for Android:
+    1. Dispatches prompt to local Qwen Batman model.
+    2. Synthesizes spoken audio via Python 3.11 Kokoro ONNX engine.
+    3. Returns response text and streaming audio URL.
+    """
+    if policy_engine.is_emergency_stopped():
+        raise HTTPException(status_code=403, detail="Workstation is in EMERGENCY STOP mode.")
+
+    t0 = time.perf_counter()
+
+    # 1. Dispatch prompt to Batman persona
+    system_prompt = (
+        "You are JARVIS, an autonomous, highly capable personal AI workstation assistant. "
+        "The operator is speaking to you remotely from their Android mobile phone via Tailscale. "
+        "Keep your response concise, confident, precise, and directly suitable for text-to-speech audio rendering. "
+        "Avoid markdown tables, asterisks, or unpronounceable formatting."
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": req.transcript}
+    ]
+
+    model_used = "qwen-batman:latest"
+    try:
+        chat_res = llm_client.chat(messages=messages, model="qwen-batman:latest", temperature=0.7, num_predict=60)
+        if isinstance(chat_res, dict):
+            reply = chat_res.get("content", "")
+            model_used = chat_res.get("model_used", "qwen-batman:latest")
+        else:
+            reply = str(chat_res)
+    except Exception as e:
+        reply = f"Apologies sir, I encountered an inference error: {str(e)}"
+
+    audio_id = None
+    audio_url = None
+
+    # 2. Synthesize audio via Kokoro ONNX in Python 3.11 if requested
+    if req.auto_speak:
+        audio_id = f"voice_{uuid.uuid4().hex[:10]}"
+        wav_path = AUDIO_CACHE_DIR / f"{audio_id}.wav"
+        python311 = r"C:\Users\Akshay aravind .rv\LOCAL_AI_MEMORY\.venv_voice\Scripts\python.exe"
+        tts_script = r"C:\Users\Akshay aravind .rv\operation_jarvis\scripts\kokoro_tts.py"
+
+        # Sanitize text for voice rendering
+        spoken_text = reply.replace("*", "").replace("#", "").replace("`", "").strip()
+        # Truncate if excessively long for voice
+        if len(spoken_text) > 400:
+            spoken_text = spoken_text[:400] + "..."
+
+        cmd = [
+            python311,
+            tts_script,
+            spoken_text,
+            str(wav_path),
+            req.voice or "bm_george",
+            "1.0"
+        ]
+        try:
+            res = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if res.returncode == 0 and wav_path.exists():
+                audio_url = f"/api/v1/mobile/audio/{audio_id}"
+        except Exception as err:
+            # Audio synthesis failed, but text response still valid
+            print(f"Kokoro synthesis failed: {err}", file=sys.stderr)
+
+    elapsed_ms = (time.perf_counter() - t0) * 1000.0
+
+    return {
+        "ok": True,
+        "transcript": req.transcript,
+        "response_text": reply,
+        "audio_id": audio_id,
+        "audio_url": audio_url,
+        "model_used": "qwen-batman:latest",
+        "latency_ms": round(elapsed_ms, 2)
+    }
+
+@mobile_router.get("/audio/{audio_id}")
+def mobile_get_audio(audio_id: str, token: str = Depends(verify_mobile_auth)):
+    """Streams generated Kokoro WAV speech to Android PWA for native audio playback."""
+    wav_path = AUDIO_CACHE_DIR / f"{audio_id}.wav"
+    if not wav_path.exists():
+        raise HTTPException(status_code=404, detail="Audio file not found or expired.")
+    return FileResponse(path=str(wav_path), media_type="audio/wav", filename=f"{audio_id}.wav")
+
+@mobile_router.get("/tasks/pending")
+def mobile_list_pending_tasks(token: str = Depends(verify_mobile_auth)):
+    """Lists Level 3 restricted tasks awaiting mobile operator approval."""
+    pending = task_db.list_tasks(status=TaskStatus.WAITING_FOR_APPROVAL)
+    return {
+        "ok": True,
+        "count": len(pending),
+        "tasks": [
+            {
+                "task_id": t.task_id,
+                "objective": t.objective,
+                "created_at": t.created_at
+            }
+            for t in pending
+        ]
+    }
+
+@mobile_router.post("/tasks/{task_id}/resolve")
+def mobile_resolve_task(task_id: str, req: MobileResolveRequest, token: str = Depends(verify_mobile_auth)):
+    """Allows Android operator to authorize or reject a Level 3 restricted task."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found.")
+
+    task_db.resolve_approval(request_id=task_id, approved=req.approved)
+    return {
+        "ok": True,
+        "task_id": task_id,
+        "approved": req.approved,
+        "status": "APPROVED" if req.approved else "REJECTED"
+    }
+
+@mobile_router.post("/emergency_stop")
+def mobile_emergency_stop(token: str = Depends(verify_mobile_auth)):
+    """Mobile emergency stop trigger."""
+    policy_engine.trigger_emergency_stop()
+    return {"ok": True, "emergency_stopped": True, "message": "Emergency stop triggered from mobile."}

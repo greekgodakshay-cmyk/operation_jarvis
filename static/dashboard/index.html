@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JARVIS // Workstation Core</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="top-nav">
+      <div class="nav-brand">
+        <div class="logo-mark">J</div>
+        <div>
+          <h1 class="nav-title">JARVIS <span>// WORKSTATION CORE</span></h1>
+          <p class="nav-subtitle">HP Victus 15-fa2382TX • Intel Core 5 210H • RTX 4050 6GB • Windows 11</p>
+        </div>
+      </div>
+      <div class="nav-actions">
+        <div id="systemStatusPill" class="status-pill status-online">
+          <span class="status-dot"></span>
+          <span id="systemStatusText">ONLINE</span>
+        </div>
+        <div class="model-badge">
+          <span class="badge-label">MODEL</span>
+          <span id="activeModelText" class="badge-val">qwen-batman:latest</span>
+        </div>
+        <button id="btnEmergencyStop" class="btn btn-danger btn-sm" onclick="toggleEmergencyStop()">EMERGENCY STOP</button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs -->
+    <nav class="sub-nav">
+      <button class="nav-tab active" onclick="switchTab('overview')">Overview</button>
+      <button class="nav-tab" onclick="switchTab('agents')">Agents & Models</button>
+      <button class="nav-tab" onclick="switchTab('capabilities')">Capabilities (<span id="tabToolCount">52</span>)</button>
+      <button class="nav-tab" onclick="switchTab('schedules')">Schedules</button>
+      <button class="nav-tab" onclick="switchTab('knowledge')">Memory & Docs</button>
+      <button class="nav-tab" onclick="switchTab('comms')">Email & Calendar</button>
+      <button class="nav-tab" onclick="switchTab('security')">Security & Approvals</button>
+    </nav>
+
+    <!-- Main Content Area -->
+    <main class="content-body">
+      <!-- Approvals Alert Banner (conditionally displayed) -->
+      <div id="approvalBanner" class="alert-banner" style="display: none;">
+        <div class="alert-content">
+          <strong>⚠️ PENDING ACTION APPROVAL REQUIRED:</strong>
+          <span id="approvalBannerText">A Level 3 Restricted task requires operator authorization.</span>
+        </div>
+        <button class="btn btn-warning btn-sm" onclick="switchTab('security')">Review Approvals</button>
+      </div>
+
+      <!-- TAB: Overview -->
+      <section id="tab-overview" class="tab-pane active">
+        <!-- Metric Cards Grid -->
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-header">HARDWARE & VRAM</div>
+            <div class="stat-value" id="statCpuRam">--% CPU / -- GB</div>
+            <div class="stat-sub" id="statGpu">NVIDIA RTX 4050 6GB (4.3 GB VRAM)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header">AUTONOMOUS AGENTS</div>
+            <div class="stat-value" id="statAgentCount">6 Active</div>
+            <div class="stat-sub">MultiAgent Orchestrator Reconciled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header">CAPABILITY REGISTRY</div>
+            <div class="stat-value" id="statToolsCount">52 Registered</div>
+            <div class="stat-sub" id="statToolsLevels">Safe: 38 | Ctrl: 8 | Restr: 6</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header">SHARED MEMORY STORE</div>
+            <div class="stat-value" id="statMemoryCount">1,101 Records</div>
+            <div class="stat-sub">SQLite FTS5 • WAL Mode Enabled</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header">DOCUMENT INTELLIGENCE</div>
+            <div class="stat-value" id="statDocCount">-- Documents</div>
+            <div class="stat-sub" id="statChunkCount">-- Total Chunks Indexed</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-header">PERSISTENT SCHEDULES</div>
+            <div class="stat-value" id="statSchedCount">-- Active</div>
+            <div class="stat-sub">Background Worker Operational</div>
+          </div>
+        </div>
+
+        <!-- Quick Interaction Bar -->
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>DIRECT AGENT QUERY / TASK SUBMISSION</h2>
+          </div>
+          <div class="input-action-bar">
+            <input type="text" id="inputUserObjective" placeholder="Instruct JARVIS (e.g. 'Search emails for security advisories', 'Check calendar availability for Friday', 'Ingest docx notes')...">
+            <button class="btn btn-primary" onclick="submitObjective()">Execute Task</button>
+          </div>
+          <div id="quickTaskResult" class="result-box" style="display: none;"></div>
+        </div>
+
+        <!-- Recent Tasks Feed -->
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>RECENT TASK EXECUTION LOG</h2>
+            <button class="btn btn-secondary btn-sm" onclick="fetchSummary()">Refresh</button>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Task ID</th>
+                  <th>Objective</th>
+                  <th>Status</th>
+                  <th>Created At</th>
+                </tr>
+              </thead>
+              <tbody id="tableRecentTasks">
+                <tr><td colspan="4" class="text-muted">Loading tasks...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Agents & Models -->
+      <section id="tab-agents" class="tab-pane">
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>REGISTERED AUTONOMOUS AGENTS (6)</h2>
+          </div>
+          <div class="agents-grid" id="agentsGrid">
+            <!-- Populated via app.js -->
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>MODEL ROUTER & SPENDING SAFETY CONTROLS</h2>
+          </div>
+          <div class="routing-overview">
+            <div class="routing-card">
+              <h3>Local Ollama Models</h3>
+              <p><code>qwen-batman:latest</code> — Conversational identity & local partner</p>
+              <p><code>qwen-text:latest</code> — General text, planning & technical queries</p>
+              <p><code>qwen3.5:9b</code> — High-capacity assistant engine</p>
+            </div>
+            <div class="routing-card">
+              <h3>Cloud Fallback & Token Caps</h3>
+              <p>Provider: <strong>OpenRouter</strong> (Optional cloud fallback)</p>
+              <p>Spending Cap: <strong id="valSpendingLimit">$5.00 USD</strong></p>
+              <p>Current Spend: <strong id="valCurrentSpend">$0.00 USD</strong></p>
+              <p>Privacy Policy: <strong>Default Deny</strong> (No memory or documents transmitted without approval)</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Capabilities -->
+      <section id="tab-capabilities" class="tab-pane">
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>CAPABILITY REGISTRY & PERMISSIONS</h2>
+            <input type="text" id="toolSearchInput" placeholder="Filter capabilities..." onkeyup="filterTools()">
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Tool Name</th>
+                  <th>Permission Level</th>
+                  <th>Description</th>
+                </tr>
+              </thead>
+              <tbody id="tableCapabilities">
+                <!-- Populated via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Schedules -->
+      <section id="tab-schedules" class="tab-pane">
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>PERSISTENT SCHEDULED TASKS</h2>
+            <button class="btn btn-primary btn-sm" onclick="showScheduleModal()">+ Create Schedule</button>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Interval / Type</th>
+                  <th>Next Run</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="tableSchedules">
+                <!-- Populated via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Schedule Creation Box -->
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>SCHEDULE NEW AGENT TASK</h2>
+          </div>
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Schedule Name</label>
+              <input type="text" id="newSchedName" placeholder="e.g. Daily Security Advisory Digest">
+            </div>
+            <div class="form-group">
+              <label>Interval (Seconds)</label>
+              <input type="number" id="newSchedInterval" value="3600">
+            </div>
+            <div class="form-group full-width">
+              <label>Objective</label>
+              <input type="text" id="newSchedObjective" placeholder="e.g. Check emails and summarize security alerts">
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="createSchedule()">Save Schedule</button>
+        </div>
+      </section>
+
+      <!-- TAB: Knowledge & Docs -->
+      <section id="tab-knowledge" class="tab-pane">
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>RAG & RETRIEVAL EVALUATION</h2>
+            <button class="btn btn-secondary btn-sm" onclick="runRagEvaluation()">Run Benchmark Now</button>
+          </div>
+          <div id="ragMetricsBox" class="metrics-highlight-bar">
+            <div>Hit Rate: <strong id="ragHitRate">--%</strong></div>
+            <div>MRR: <strong id="ragMRR">--</strong></div>
+            <div>Avg Latency: <strong id="ragLatency">-- ms</strong></div>
+            <div>Negative Rejection: <strong id="ragRejection">--%</strong></div>
+          </div>
+          <div id="ragReportView" class="report-box" style="display: none;"></div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>INDEXED DOCUMENTS (FTS5)</h2>
+          </div>
+          <div class="input-action-bar">
+            <input type="text" id="inputIngestPath" placeholder="Enter path to PDF, DOCX, TXT to ingest...">
+            <button class="btn btn-primary" onclick="ingestDocument()">Ingest Document</button>
+          </div>
+          <div class="table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>Filename</th>
+                  <th>Chunks</th>
+                  <th>Indexed Date</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="tableDocuments">
+                <!-- Populated via app.js -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Comms (Email & Calendar) -->
+      <section id="tab-comms" class="tab-pane">
+        <div class="dual-column">
+          <div class="panel-section">
+            <div class="section-header">
+              <h2>EMAIL INBOX (LOCAL GATEWAY)</h2>
+            </div>
+            <div class="list-feed" id="emailList">
+              <!-- Populated via app.js -->
+            </div>
+          </div>
+          <div class="panel-section">
+            <div class="section-header">
+              <h2>CALENDAR AGENDA</h2>
+            </div>
+            <div class="list-feed" id="calendarList">
+              <!-- Populated via app.js -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB: Security & Approvals -->
+      <section id="tab-security" class="tab-pane">
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>PENDING LEVEL 3 APPROVAL REQUESTS</h2>
+          </div>
+          <div id="pendingApprovalsList">
+            <p class="text-muted">No pending approvals at this time. All policies nominal.</p>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <div class="section-header">
+            <h2>SECURITY POLICY ENFORCEMENT POSTURE</h2>
+          </div>
+          <div class="policy-card">
+            <p><strong>Workstation Isolation:</strong> Mobile adapter bound strictly to <code>127.0.0.1</code>.</p>
+            <p><strong>External Connectivity:</strong> Ollama port <code>11434</code> blocked externally. Tailscale Funnel strictly forbidden.</p>
+            <p><strong>Default-Deny Policy:</strong> All email dispatch, calendar deletions, and shell execution require explicit cryptographic human tokens.</p>
+            <p><strong>Secret Redactor:</strong> Active across all capability tool inputs and outputs.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bottom-bar">
+      <span>OPERATION JARVIS • LOCAL-FIRST WORKSTATION RUNTIME</span>
+      <span>WAL MODE ACTIVE • SECURE EXECUTION GATEWAY</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

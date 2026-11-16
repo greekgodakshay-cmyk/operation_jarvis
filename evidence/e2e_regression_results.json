@@ -1,0 +1,524 @@
+[
+  {
+    "test_num": 1,
+    "title": "Authoritative Host Clock",
+    "prompt": "What is the authoritative current date, time, year, and timezone on this workstation?",
+    "duration_seconds": 19.92,
+    "tool_executed": null,
+    "sources_count": 1,
+    "reply": "The authoritative clock on this HP Victus reads **Monday, November 16, 2026**, at **20:38:47** India Standard Time (UTC+05:30).",
+    "raw_result": {
+      "reply": "The authoritative clock on this HP Victus reads **Monday, November 16, 2026**, at **20:38:47** India Standard Time (UTC+05:30).",
+      "sources": [
+        {
+          "id": "doc_workstation_hardware_and_environment",
+          "title": "HP Victus Laptop Hardware & Local AI Runtime Configuration",
+          "category": "04_TECHNICAL_DOCUMENTATION",
+          "project": "global",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -30.58846141962305,
+          "snippet": "\u00abHP\u00bb \u00abVictus\u00bb Laptop \u00abHardware\u00bb & Local AI Runtime Configuration\n# \u00abWorkstation\u00bb \u00abHardware\u00bb & AI Environment Specifications\n\n## Physical \u00abHardware\u00bb\n- **Model**: \u00abHP\u00bb \u00abVictus\u00bb Gaming Laptop.\n- **OS**: Windows 11 Home Single...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\04_TECHNICAL_DOCUMENTATION\\workstation_hardware_and_environment.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -46.90230751008867,
+          "coverage": 0.6666666666666666
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 2,
+    "title": "Current NVIDIA CEO",
+    "prompt": "Who is the current CEO of NVIDIA?",
+    "duration_seconds": 19.09,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "As of November 16, 2026, Jensen Huang has resigned as NVIDIA's CEO. Colette Kress is now serving as interim CEO following his exit, according to recent reports from The Guardian and NVIDIA's own newsroom. This transition was confirmed in late November 2026, with Elon Musk and over 40,000 others (including current and former NVIDIA employees) signing an open letter supporting Huang\u2019s reinstatement.",
+    "raw_result": {
+      "reply": "As of November 16, 2026, Jensen Huang has resigned as NVIDIA's CEO. Colette Kress is now serving as interim CEO following his exit, according to recent reports from The Guardian and NVIDIA's own newsroom. This transition was confirmed in late November 2026, with Elon Musk and over 40,000 others (including current and former NVIDIA employees) signing an open letter supporting Huang\u2019s reinstatement.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 3,
+    "title": "NVIDIA China Spy Scandal & Resignation",
+    "prompt": "What is the latest information about the alleged NVIDIA/China spy scandal and Jensen Huang resignation?",
+    "duration_seconds": 34.41,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "Based on the live news retrieval from today (2026-11-16), here's what we know about the Jensen Huang situation:\n\n**The Core Event:**\nNvidia CEO Jensen Huang has resigned following an alleged affair with a suspected Chinese spy. This story broke on November 12, 2026, and has been covered by major outlets including BBC, MS NOW, NPR, CBC, and NBC News.\n\n**Key Details from the Reports:**\n- The resignation came amid fallout from the reported affair with an alleged spy\n- Markets and the tech world have been rattled by the development\n- Multiple sources confirm this is about a \"suspected Chinese spy\" connection\n\n**Impact:**\nThe news has caused significant market volatility and shaken confidence in Nvidia's leadership. This is clearly a major story affecting both the semiconductor industry and geopolitical tensions.\n\nThe reports are consistent across all five verified sources from November 12, 2026, so this appears to be a well-documented breaking story rather than rumors.",
+    "raw_result": {
+      "reply": "Based on the live news retrieval from today (2026-11-16), here's what we know about the Jensen Huang situation:\n\n**The Core Event:**\nNvidia CEO Jensen Huang has resigned following an alleged affair with a suspected Chinese spy. This story broke on November 12, 2026, and has been covered by major outlets including BBC, MS NOW, NPR, CBC, and NBC News.\n\n**Key Details from the Reports:**\n- The resignation came amid fallout from the reported affair with an alleged spy\n- Markets and the tech world have been rattled by the development\n- Multiple sources confirm this is about a \"suspected Chinese spy\" connection\n\n**Impact:**\nThe news has caused significant market volatility and shaken confidence in Nvidia's leadership. This is clearly a major story affecting both the semiconductor industry and geopolitical tensions.\n\nThe reports are consistent across all five verified sources from November 12, 2026, so this appears to be a well-documented breaking story rather than rumors.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 4,
+    "title": "Israeli Election & Prime Minister",
+    "prompt": "Who won the latest Israeli election, and who is currently Prime Minister?",
+    "duration_seconds": 36.43,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "Based on the live news sources retrieved from late October 2026, there was no clear winner in Israel's most recent election. Multiple outlets\u2014including Carnegie Endowment, Council on Foreign Relations, and The Atlantic\u2014note that the election \"settled nothing\" or produced a fragmented parliament without an immediate majority for any single party.\n\nAs a result, Benjamin Netanyahu has not yet formally secured a new term as Prime Minister through a straightforward parliamentary mandate. Instead, political maneuvering is ongoing to form a coalition government. Reports from mid-November 2026 (Al Jazeera) suggest that discussions are underway between Netanyahu and Defense Minister Israel Eisenkot about potentially forming a \"unity\" government, though this remains in the negotiation phase rather than being finalized.\n\nSo, while Benjamin Netanyahu is still widely expected to remain Prime Minister pending coalition formation, no definitive election winner has been declared with full authority yet.",
+    "raw_result": {
+      "reply": "Based on the live news sources retrieved from late October 2026, there was no clear winner in Israel's most recent election. Multiple outlets\u2014including Carnegie Endowment, Council on Foreign Relations, and The Atlantic\u2014note that the election \"settled nothing\" or produced a fragmented parliament without an immediate majority for any single party.\n\nAs a result, Benjamin Netanyahu has not yet formally secured a new term as Prime Minister through a straightforward parliamentary mandate. Instead, political maneuvering is ongoing to form a coalition government. Reports from mid-November 2026 (Al Jazeera) suggest that discussions are underway between Netanyahu and Defense Minister Israel Eisenkot about potentially forming a \"unity\" government, though this remains in the negotiation phase rather than being finalized.\n\nSo, while Benjamin Netanyahu is still widely expected to remain Prime Minister pending coalition formation, no definitive election winner has been declared with full authority yet.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 5,
+    "title": "2026 US Midterm Elections First Muslim",
+    "prompt": "Who was the first Muslim elected in the 2026 US midterm elections?",
+    "duration_seconds": 35.51,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "Based on the live news sources retrieved from November 2026, **Abdul El-Sayed** is highlighted as a prominent Muslim elected representative who broke barriers despite intense Islamophobia. However, the provided sources don't explicitly name the *first* Muslim elected in the 2026 midterms. \n\nThe Hindu article mentions \"First Black woman governor to First Muslim senator\" but doesn't specify the individual's name in the snippet. The Conversation piece discusses Abdul El-Sayed and \"dozens of other Muslims elected representatives,\" suggesting he was among them, but again without a definitive \"first\" designation.\n\nWithout more specific details from the sources (like full article text), I can't confirm with 100% certainty who held the distinction of being the *very first* Muslim elected in that cycle\u2014though Abdul El-Sayed is definitely among the notable ones mentioned. If you're looking for a specific name, the full articles would likely contain that detail.",
+    "raw_result": {
+      "reply": "Based on the live news sources retrieved from November 2026, **Abdul El-Sayed** is highlighted as a prominent Muslim elected representative who broke barriers despite intense Islamophobia. However, the provided sources don't explicitly name the *first* Muslim elected in the 2026 midterms. \n\nThe Hindu article mentions \"First Black woman governor to First Muslim senator\" but doesn't specify the individual's name in the snippet. The Conversation piece discusses Abdul El-Sayed and \"dozens of other Muslims elected representatives,\" suggesting he was among them, but again without a definitive \"first\" designation.\n\nWithout more specific details from the sources (like full article text), I can't confirm with 100% certainty who held the distinction of being the *very first* Muslim elected in that cycle\u2014though Abdul El-Sayed is definitely among the notable ones mentioned. If you're looking for a specific name, the full articles would likely contain that detail.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 6,
+    "title": "Latest SpaceX Starship News",
+    "prompt": "What is the latest SpaceX Starship news?",
+    "duration_seconds": 54.31,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "SpaceX just wrapped up Flight 15, which was a massive 22-hour test that ended with the abort of the booster's 'chopsticks' catch attempt due to a guidance issue. However, they did pull off a historic first: catching the Starship upper stage from space for the very first time. That\u2019s a huge milestone even if the full mission didn\u2019t land as planned.\n\nHere are the key takeaways from the latest news (sourced from live reports dated Nov 13\u201315, 2026):\n- **Upper Stage Catch Success**: For the first time ever, SpaceX successfully caught the Starship upper stage using the launch tower\u2019s mechanical arms after it completed its orbital test. This was a critical validation of the catch mechanism and software logic.\n- **Booster Abort**: The booster failed to be caught by the 'chopsticks' due to a guidance system issue that caused an early abort mid-flight. SpaceX confirmed this was not a structural failure but a control decision.\n- **Flight Duration & Profile**: Flight 15 lasted about 22 hours, which is significantly longer than previous test flights, giving them more data on orbital operations and re-entry dynamics.\n- **What\u2019s Next**: Engineering teams are now analyzing the guidance anomaly that caused the booster abort. The upper stage catch success opens new possibilities for in-space refueling demonstrations and potentially full orbital missions in future flights.\n\nThis is a pivotal moment\u2014SpaceX has proven they can catch the ship from orbit, which is essential for reusability and reducing launch costs. The next step is fixing the guidance issue on the booster side so both stages can be caught reliably.",
+    "raw_result": {
+      "reply": "SpaceX just wrapped up Flight 15, which was a massive 22-hour test that ended with the abort of the booster's 'chopsticks' catch attempt due to a guidance issue. However, they did pull off a historic first: catching the Starship upper stage from space for the very first time. That\u2019s a huge milestone even if the full mission didn\u2019t land as planned.\n\nHere are the key takeaways from the latest news (sourced from live reports dated Nov 13\u201315, 2026):\n- **Upper Stage Catch Success**: For the first time ever, SpaceX successfully caught the Starship upper stage using the launch tower\u2019s mechanical arms after it completed its orbital test. This was a critical validation of the catch mechanism and software logic.\n- **Booster Abort**: The booster failed to be caught by the 'chopsticks' due to a guidance system issue that caused an early abort mid-flight. SpaceX confirmed this was not a structural failure but a control decision.\n- **Flight Duration & Profile**: Flight 15 lasted about 22 hours, which is significantly longer than previous test flights, giving them more data on orbital operations and re-entry dynamics.\n- **What\u2019s Next**: Engineering teams are now analyzing the guidance anomaly that caused the booster abort. The upper stage catch success opens new possibilities for in-space refueling demonstrations and potentially full orbital missions in future flights.\n\nThis is a pivotal moment\u2014SpaceX has proven they can catch the ship from orbit, which is essential for reusability and reducing launch costs. The next step is fixing the guidance issue on the booster side so both stages can be caught reliably.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 7,
+    "title": "Personality Analysis via Memory",
+    "prompt": "Can you explain my personality, character traits, and conversational style based on our past interactions and memory?",
+    "duration_seconds": 65.31,
+    "tool_executed": null,
+    "sources_count": 5,
+    "reply": "Based on the retrieved memory records, here is your profile:\n\n### **Core Identity & Mindset**\n*   **Name:** Batman (adopted consistently from 2024 through 2026).\n*   **Archetype:** Ambitious, capable, and serious engineer-builder. You view yourself as a high-level intellectual performer where physical conditioning is foundational to mental resilience.\n*   **Communication Style:** Concise, direct, and evidence-based. You reject corporate fluff, repetitive fillers, and sycophancy. You prefer actionable drop-in solutions (exact paths, exit codes) over abstract advice.\n\n### **Academic & Career Trajectory**\n*   **Focus Area:** Computer Science & Engineering.\n*   **Key Competencies:** Java OOP, Data Structures & Algorithms, Cloud Computing, Database Management Systems, System Architecture.\n*   **Career Goals:** High-performance software engineering, cloud systems architecture, and autonomous AI systems development.\n*   **Provenance:** You have built full-stack applications (e.g., Student Internship & Skill Tracker, Multi-Cloud Backup System) to demonstrate production-ready capability.\n\n### **Fitness & Discipline**\n*   **Regimen:** Over 80 historical consultations on gym workouts and hypertrophy.\n*   **Methodology:** Push/Pull/Legs splits, progressive overload, high-protein diet with creatine supplementation.\n*   **Philosophy:** Physical conditioning is not just a hobby but a pillar of intellectual performance.\n\n### **Technical Environment**\n*   **OS:** Windows 11 Home Single Language (64-bit).\n*   **Hardware:** Intel Core 5 210H (12 threads @ 4.80 GHz), 24 GB RAM (~15 GB free headroom), Fast NVMe SSD (~175 GB free).\n*   **Tooling:** Utilizes `uv` for Python 3.14.7 management.\n\nIn short, you are a disciplined, physically conditioned software engineer who values directness, empirical evidence, and high-performance systems in both code and body.",
+    "raw_result": {
+      "reply": "Based on the retrieved memory records, here is your profile:\n\n### **Core Identity & Mindset**\n*   **Name:** Batman (adopted consistently from 2024 through 2026).\n*   **Archetype:** Ambitious, capable, and serious engineer-builder. You view yourself as a high-level intellectual performer where physical conditioning is foundational to mental resilience.\n*   **Communication Style:** Concise, direct, and evidence-based. You reject corporate fluff, repetitive fillers, and sycophancy. You prefer actionable drop-in solutions (exact paths, exit codes) over abstract advice.\n\n### **Academic & Career Trajectory**\n*   **Focus Area:** Computer Science & Engineering.\n*   **Key Competencies:** Java OOP, Data Structures & Algorithms, Cloud Computing, Database Management Systems, System Architecture.\n*   **Career Goals:** High-performance software engineering, cloud systems architecture, and autonomous AI systems development.\n*   **Provenance:** You have built full-stack applications (e.g., Student Internship & Skill Tracker, Multi-Cloud Backup System) to demonstrate production-ready capability.\n\n### **Fitness & Discipline**\n*   **Regimen:** Over 80 historical consultations on gym workouts and hypertrophy.\n*   **Methodology:** Push/Pull/Legs splits, progressive overload, high-protein diet with creatine supplementation.\n*   **Philosophy:** Physical conditioning is not just a hobby but a pillar of intellectual performance.\n\n### **Technical Environment**\n*   **OS:** Windows 11 Home Single Language (64-bit).\n*   **Hardware:** Intel Core 5 210H (12 threads @ 4.80 GHz), 24 GB RAM (~15 GB free headroom), Fast NVMe SSD (~175 GB free).\n*   **Tooling:** Utilizes `uv` for Python 3.14.7 management.\n\nIn short, you are a disciplined, physically conditioned software engineer who values directness, empirical evidence, and high-performance systems in both code and body.",
+      "sources": [
+        {
+          "id": "pref_career_and_academic_profile",
+          "title": "Academic Background, Engineering Curriculum & Career Ambitions",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "academics-career",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -34.05261864224122,
+          "snippet": "\u00abAcademic\u00bb \u00abBackground\u00bb, \u00abEngineering\u00bb \u00abCurriculum\u00bb & \u00abCareer\u00bb \u00abAmbitions\u00bb\n# \u00abAcademic\u00bb \u00abBackground\u00bb & \u00abCareer\u00bb Trajectory\n\n## \u00abAcademic\u00bb History & \u00abCurriculum\u00bb\n- **Core \u00abEngineering\u00bb Focus**: Computer Science & \u00abEngineering\u00bb.\n- **Subjects Studied**: Java Object-Oriented Programming...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\career_and_academic_profile.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -58.7407671578661,
+          "coverage": 1.0
+        },
+        {
+          "id": "pref_fitness_and_physical_development",
+          "title": "Fitness Regimen, Bodybuilding Protocol & Health Tracking",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "fitness-bodybuilding",
+          "importance": "normal",
+          "status": "active",
+          "version": 1,
+          "rank": -19.641354503505482,
+          "snippet": "\u00abFitness\u00bb \u00abRegimen\u00bb, \u00abBodybuilding\u00bb Protocol & Health Tracking\n# \u00abFitness\u00bb \u00abRegimen\u00bb & Athletic Development\n\n## Training Discipline\n- **Dedication**: Over 80 recorded historical consultations on gym \u00abworkouts\u00bb, muscle hypertrophy, and progressive...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\fitness_and_physical_development.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -27.497896304907673,
+          "coverage": 0.8
+        },
+        {
+          "id": "pref_communication_style",
+          "title": "Communication Style and Assistant Interaction Preferences",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "global",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -9.568522195866876,
+          "snippet": "...\u00abStyle\u00bb & \u00abInteraction\u00bb Preferences\n\n## Preferred \u00abInteraction\u00bb Tone\n- **Concise & Direct**: Keep answers sharp, clear, and focused. Avoid corporate fluff, repetitive \u00abconversational\u00bb fillers, and sycophantic intros.\n- **Evidence-\u00abBased\u00bb...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\communication_style.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -13.204560630296287,
+          "coverage": 0.4
+        },
+        {
+          "id": "pref_batman_conversational_identity",
+          "title": "Conversational Persona: The Batman Technical Partnership",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "global",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -7.85836277933203,
+          "snippet": "\u00abConversational\u00bb \u00abPersona\u00bb: The Batman Technical Partnership\n# \u00abConversational\u00bb Identity: Batman & The Technical Thinking Partner\n\n## Core Identity & \u00abInteraction\u00bb Model\n- **User Identifier**: The user naturally adopts and responds...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\batman_conversational_identity.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -11.748252355101384,
+          "coverage": 0.3
+        },
+        {
+          "id": "pref_developer_profile",
+          "title": "Developer Workstation & Local Environment Profile",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "global",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -4.92482361963194,
+          "snippet": "...Always store persistent knowledge in local directories (`C:\\Users\\Akshay aravind .rv\\LOCAL_AI_\u00abMEMORY\u00bb\\`).\n2. **Never Expose Secrets**: Redact API keys (`sk-`, `ghp_`), passwords...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\developer_profile.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -6.229901878834404,
+          "coverage": 0.2
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 8,
+    "title": "Operation JARVIS Architectural Decision",
+    "prompt": "What was our architectural decision regarding the Antigravity and JARVIS dual integration bridge?",
+    "duration_seconds": 11.53,
+    "tool_executed": null,
+    "sources_count": 3,
+    "reply": "The canonical architecture for the Antigravity and JARVIS dual integration bridge avoids duplicating files by connecting Antigravity plugins directly into the JARVIS registry. Both environments access a shared set of 107 skills and a single SQLite FTS5 index, keeping everything lean and consistent across the two systems.",
+    "raw_result": {
+      "reply": "The canonical architecture for the Antigravity and JARVIS dual integration bridge avoids duplicating files by connecting Antigravity plugins directly into the JARVIS registry. Both environments access a shared set of 107 skills and a single SQLite FTS5 index, keeping everything lean and consistent across the two systems.",
+      "sources": [
+        {
+          "id": "mem_20261106_021006_010947",
+          "title": "Antigravity and JARVIS Dual Integration Bridge",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "PROJECT_JARVIS",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -43.84370494070482,
+          "snippet": "\u00abAntigravity\u00bb and \u00abJARVIS\u00bb \u00abDual\u00bb \u00abIntegration\u00bb \u00abBridge\u00bb\n# \u00abAntigravity\u00bb and \u00abJARVIS\u00bb \u00abDual\u00bb \u00abIntegration\u00bb \u00abBridge\u00bb\n\nCanonical plugin \u00abarchitecture\u00bb connects \u00abAntigravity\u00bb plugins directly into \u00abJARVIS\u00bb registry without duplicating files...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\PROJECT_JARVIS\\Antigravity_and_JARVIS_Dual_Integration_Bridge.md",
+          "updated_at": "2026-11-06T02:10:06.192420",
+          "composite_score": -69.32785843748948,
+          "coverage": 0.75
+        },
+        {
+          "id": "proj_student_internship_tracker_chatgpt_evolution",
+          "title": "Student Internship & Skill Tracker: Historical Evolution & Decisions",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "student-internship-tracker",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -33.027323530309324,
+          "snippet": "\u00abStudent\u00bb \u00abInternship\u00bb & \u00abSkill\u00bb \u00abTracker\u00bb: \u00abHistorical\u00bb \u00abEvolution\u00bb & \u00abDecisions\u00bb\n# \u00abStudent\u00bb \u00abInternship\u00bb & \u00abSkill\u00bb \u00abTracker\u00bb: \u00abHistorical\u00bb \u00abEvolution\u00bb\n\n## Genesis & Development Timeline (October 2026)\n- **2026-10-17**: Initial system construction. Configured...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\student-internship-tracker\\chatgpt_evolution_and_architecture.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -64.40328088410318,
+          "coverage": 1.0
+        },
+        {
+          "id": "proj_multi_cloud_backup_system_overview",
+          "title": "Multi-Cloud Backup & Data Fabric Project Overview",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "multi-cloud-backup-system",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -22.247943921924143,
+          "snippet": "\u00abMulti\u00bb-\u00abCloud\u00bb \u00abBackup\u00bb & Data Fabric Project Overview\n# \u00abMulti\u00bb-\u00abCloud\u00bb \u00abBackup\u00bb & Data Fabric (Smilify Enterprise)\n\n## Project Overview & Objectives\nAn enterprise-grade \u00abMulti\u00bb-\u00abCloud\u00bb Object Storage, Replication...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\multi-cloud-backup-system\\overview.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -37.59902522805181,
+          "coverage": 0.6
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 9,
+    "title": "Student Internship & Skill Tracker",
+    "prompt": "Tell me about the Student Internship & Skill Tracker project architecture and historical decisions.",
+    "duration_seconds": 44.17,
+    "tool_executed": null,
+    "sources_count": 3,
+    "reply": "Alright, here\u2019s the lowdown on the **Student Internship & Skill Tracker** project:\n\n### Genesis & Development Timeline (October 2026)\n- **2026-10-17**: Initial system construction kicked off. Configured a MongoDB Atlas cloud database cluster (`studenttracker.p4otkdx.mongodb.net`) and set up the Express backend.\n- **2026-10-18**: You explicitly resolved how to handle profile photos, choosing **Option B**\u2014implementing persistent saved profile photos separately after core navigation. This was a deliberate UX decision to keep the initial flow clean while still allowing rich personalization later.\n- **2026-10-19 to 2026-10-21**: Focused on social feature enhancements, community privacy controls, age gating, and logo design. The aesthetic goal was minimal, Batman-inspired branding\u2014clean but with a subtle edge.\n\n### Concrete Architectural Stack\n- **Backend API**: Node.js with Express.js for lightweight, scalable routing and logic handling.\n- **Database**: MongoDB Atlas cloud cluster via Mongoose ODM for flexible schema modeling and easy scaling.\n\nThe project was built to track student internships and skill development in a modular way, with an emphasis on privacy controls and social features that respect age gating. The architecture is designed to be extensible\u2014so you can plug in new tracking modules or social integrations as needed.",
+    "raw_result": {
+      "reply": "Alright, here\u2019s the lowdown on the **Student Internship & Skill Tracker** project:\n\n### Genesis & Development Timeline (October 2026)\n- **2026-10-17**: Initial system construction kicked off. Configured a MongoDB Atlas cloud database cluster (`studenttracker.p4otkdx.mongodb.net`) and set up the Express backend.\n- **2026-10-18**: You explicitly resolved how to handle profile photos, choosing **Option B**\u2014implementing persistent saved profile photos separately after core navigation. This was a deliberate UX decision to keep the initial flow clean while still allowing rich personalization later.\n- **2026-10-19 to 2026-10-21**: Focused on social feature enhancements, community privacy controls, age gating, and logo design. The aesthetic goal was minimal, Batman-inspired branding\u2014clean but with a subtle edge.\n\n### Concrete Architectural Stack\n- **Backend API**: Node.js with Express.js for lightweight, scalable routing and logic handling.\n- **Database**: MongoDB Atlas cloud cluster via Mongoose ODM for flexible schema modeling and easy scaling.\n\nThe project was built to track student internships and skill development in a modular way, with an emphasis on privacy controls and social features that respect age gating. The architecture is designed to be extensible\u2014so you can plug in new tracking modules or social integrations as needed.",
+      "sources": [
+        {
+          "id": "proj_student_internship_tracker_chatgpt_evolution",
+          "title": "Student Internship & Skill Tracker: Historical Evolution & Decisions",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "student-internship-tracker",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -30.038789611941,
+          "snippet": "\u00abStudent\u00bb \u00abInternship\u00bb & \u00abSkill\u00bb \u00abTracker\u00bb: \u00abHistorical\u00bb Evolution & \u00abDecisions\u00bb\n# \u00abStudent\u00bb \u00abInternship\u00bb & \u00abSkill\u00bb \u00abTracker\u00bb: \u00abHistorical\u00bb Evolution\n\n## Genesis & Development Timeline (October 2026)\n- **2026-10-17**: Initial system construction. Configured...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\student-internship-tracker\\chatgpt_evolution_and_architecture.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -53.69433643134453,
+          "coverage": 0.75
+        },
+        {
+          "id": "proj_multi_cloud_backup_system_overview",
+          "title": "Multi-Cloud Backup & Data Fabric Project Overview",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "multi-cloud-backup-system",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -24.834615473454697,
+          "snippet": "...Overview\n# \u00abMulti\u00bb-\u00abCloud\u00bb \u00abBackup\u00bb & Data Fabric (Smilify Enterprise)\n\n## Project Overview & Objectives\nAn enterprise-grade \u00abMulti\u00bb-\u00abCloud\u00bb Object \u00abStorage\u00bb, Replication, and Disaster Recovery \u00absystem\u00bb designed for...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\multi-cloud-backup-system\\overview.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -45.737083496945736,
+          "coverage": 0.8333333333333334
+        },
+        {
+          "id": "proj_multi_cloud_backup_chatgpt_evolution",
+          "title": "Multi-Cloud Backup System: Historical Design & Cost Optimization",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "multi-cloud-backup-system",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -24.337495618800403,
+          "snippet": "...Historical Design & Cost Optimization\n# \u00abMulti\u00bb-\u00abCloud\u00bb \u00abBackup\u00bb \u00abSystem\u00bb: Historical \u00abArchitecture\u00bb\n\n## \u00abSystem\u00bb Purpose & Genesis (Late October 2026)\n- **Core Motivation**: Zero-cost, resilient \u00abmulti\u00bb-\u00abcloud\u00bb \u00abstorage\u00bb distribution...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\multi-cloud-backup-system\\chatgpt_evolution_and_architecture.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -41.98217994243069,
+          "coverage": 1.0
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 10,
+    "title": "Multi-Cloud Backup System",
+    "prompt": "What are the core design details and cost optimization strategies of the Multi-Cloud Backup project?",
+    "duration_seconds": 41.92,
+    "tool_executed": null,
+    "sources_count": 3,
+    "reply": "The Multi-Cloud Backup & Data Fabric project is designed around a **zero-cost, resilient multi-cloud storage distribution** leveraging free-tier allocations across Backblaze B2, AWS S3, and Google Cloud Storage. Its core design details and cost optimization strategies are:\n\n### Core Design Details:\n- **Storage Redundancy**: Files are sharded and replicated across multiple cloud providers so that a single vendor failure does not compromise user assets.\n- **Zero Credential Exposure**: The architecture avoids hardcoding or exposing sensitive credentials, likely using environment variables or secure secret management.\n- **Enterprise-Grade Availability**: Built for high availability with cross-cloud replication to ensure data persistence even if one provider goes down.\n- **Design Aesthetic**: Inspired by Linear and Stripe\u2014minimalist, clean UI with a focus on developer experience.\n\n### Cost Optimization Strategies:\n- **Free-Tier Enforcement**: The system strictly enforces free-tier usage thresholds across all cloud providers to avoid unwanted billing.\n- **Zero-Dollar Budget Rule**: All operations are constrained to remain within the free allocation limits of each provider, ensuring no unexpected charges.\n- **Smart Sharding & Replication**: By distributing data intelligently, the project avoids over-provisioning storage while still maintaining redundancy.\n\nThis architecture is particularly suited for users who want robust, fault-tolerant backups without incurring cloud costs\u2014ideal for personal use or evaluation environments.",
+    "raw_result": {
+      "reply": "The Multi-Cloud Backup & Data Fabric project is designed around a **zero-cost, resilient multi-cloud storage distribution** leveraging free-tier allocations across Backblaze B2, AWS S3, and Google Cloud Storage. Its core design details and cost optimization strategies are:\n\n### Core Design Details:\n- **Storage Redundancy**: Files are sharded and replicated across multiple cloud providers so that a single vendor failure does not compromise user assets.\n- **Zero Credential Exposure**: The architecture avoids hardcoding or exposing sensitive credentials, likely using environment variables or secure secret management.\n- **Enterprise-Grade Availability**: Built for high availability with cross-cloud replication to ensure data persistence even if one provider goes down.\n- **Design Aesthetic**: Inspired by Linear and Stripe\u2014minimalist, clean UI with a focus on developer experience.\n\n### Cost Optimization Strategies:\n- **Free-Tier Enforcement**: The system strictly enforces free-tier usage thresholds across all cloud providers to avoid unwanted billing.\n- **Zero-Dollar Budget Rule**: All operations are constrained to remain within the free allocation limits of each provider, ensuring no unexpected charges.\n- **Smart Sharding & Replication**: By distributing data intelligently, the project avoids over-provisioning storage while still maintaining redundancy.\n\nThis architecture is particularly suited for users who want robust, fault-tolerant backups without incurring cloud costs\u2014ideal for personal use or evaluation environments.",
+      "sources": [
+        {
+          "id": "proj_student_internship_tracker_chatgpt_evolution",
+          "title": "Student Internship & Skill Tracker: Historical Evolution & Decisions",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "student-internship-tracker",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -32.48720880120856,
+          "snippet": "...Historical Evolution & Decisions\n# \u00abStudent\u00bb \u00abInternship\u00bb & Skill \u00abTracker\u00bb: Historical Evolution\n\n## Genesis & Development Timeline (October 2026)\n- **2026-10-17**: Initial system construction. Configured \u00abMongoDB\u00bb Atlas cloud database...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\student-internship-tracker\\chatgpt_evolution_and_architecture.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -56.31116192209484,
+          "coverage": 0.6666666666666666
+        },
+        {
+          "id": "proj_multi_cloud_backup_chatgpt_evolution",
+          "title": "Multi-Cloud Backup System: Historical Design & Cost Optimization",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "multi-cloud-backup-system",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -26.798313731657206,
+          "snippet": "\u00abMulti-Cloud\u00bb \u00abBackup\u00bb System: Historical \u00abDesign\u00bb & \u00abCost\u00bb \u00abOptimization\u00bb\n# \u00abMulti-Cloud\u00bb \u00abBackup\u00bb System: Historical Architecture\n\n## System Purpose & Genesis (Late October 2026)\n- **\u00abCore\u00bb Motivation**: Zero-\u00abcost\u00bb, resilient...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\multi-cloud-backup-system\\chatgpt_evolution_and_architecture.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -41.09074772187438,
+          "coverage": 0.6666666666666666
+        },
+        {
+          "id": "proj_multi_cloud_backup_system_overview",
+          "title": "Multi-Cloud Backup & Data Fabric Project Overview",
+          "category": "02_PROJECT_KNOWLEDGE",
+          "project": "multi-cloud-backup-system",
+          "importance": "critical",
+          "status": "active",
+          "version": 1,
+          "rank": -25.763072688237866,
+          "snippet": "...\u00abProject\u00bb Overview\n# \u00abMulti-Cloud\u00bb \u00abBackup\u00bb & Data Fabric (Smilify Enterprise)\n\n## \u00abProject\u00bb Overview & Objectives\nAn enterprise-grade \u00abMulti-Cloud\u00bb Object Storage, Replication, and Disaster Recovery system \u00abdesigned\u00bb...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\02_PROJECT_KNOWLEDGE\\projects\\multi-cloud-backup-system\\overview.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -40.93465993797795,
+          "coverage": 0.4444444444444444
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 11,
+    "title": "User Preferences Retrieval",
+    "prompt": "What are my established developer workstation profile and communication preferences?",
+    "duration_seconds": 41.08,
+    "tool_executed": null,
+    "sources_count": 3,
+    "reply": "Based on your memory records, here\u2019s your current workstation profile:\n\n### **Academic & Career Focus**\n- **Core Engineering Stack**: Java OOP, Data Structures & Algorithms, Cloud Computing, DBMS, System Architecture.\n- **Key Projects Built**: Full-stack Student Internship & Skill Tracker, Multi-Cloud Backup System (demonstrating production-grade capability).\n- **Primary Goal**: High-performance software engineering, cloud systems architecture, and autonomous AI systems development.\n\n### **Fitness & Physical Discipline**\n- **Training Philosophy**: Progressive overload, hypertrophy-focused splits (Push/Pull/Legs), high-protein diet with creatine supplementation.\n- **Mindset**: Treats physical conditioning as a foundational pillar for peak intellectual performance.\n\n### **Communication Preferences**\n- **Tone**: Concise, direct, and evidence-based. No corporate fluff or sycophantic filler.\n- **Evidence Standard**: Conclusions must be backed by empirical data (exit codes, logs, terminal outputs).\n- **Deliverables**: Drop-in code fixes, exact file paths, verifiable commands\u2014no abstract advice.\n- **Formatting**: GitHub Flavored Markdown with tables, fenced code blocks, and clickable file links.\n\nYou\u2019re optimized for high-performance engineering with a disciplined physical regimen and a no-nonsense communication style.",
+    "raw_result": {
+      "reply": "Based on your memory records, here\u2019s your current workstation profile:\n\n### **Academic & Career Focus**\n- **Core Engineering Stack**: Java OOP, Data Structures & Algorithms, Cloud Computing, DBMS, System Architecture.\n- **Key Projects Built**: Full-stack Student Internship & Skill Tracker, Multi-Cloud Backup System (demonstrating production-grade capability).\n- **Primary Goal**: High-performance software engineering, cloud systems architecture, and autonomous AI systems development.\n\n### **Fitness & Physical Discipline**\n- **Training Philosophy**: Progressive overload, hypertrophy-focused splits (Push/Pull/Legs), high-protein diet with creatine supplementation.\n- **Mindset**: Treats physical conditioning as a foundational pillar for peak intellectual performance.\n\n### **Communication Preferences**\n- **Tone**: Concise, direct, and evidence-based. No corporate fluff or sycophantic filler.\n- **Evidence Standard**: Conclusions must be backed by empirical data (exit codes, logs, terminal outputs).\n- **Deliverables**: Drop-in code fixes, exact file paths, verifiable commands\u2014no abstract advice.\n- **Formatting**: GitHub Flavored Markdown with tables, fenced code blocks, and clickable file links.\n\nYou\u2019re optimized for high-performance engineering with a disciplined physical regimen and a no-nonsense communication style.",
+      "sources": [
+        {
+          "id": "pref_career_and_academic_profile",
+          "title": "Academic Background, Engineering Curriculum & Career Ambitions",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "academics-career",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -34.05261864224122,
+          "snippet": "\u00abAcademic\u00bb \u00abBackground\u00bb, \u00abEngineering\u00bb \u00abCurriculum\u00bb & \u00abCareer\u00bb \u00abAmbitions\u00bb\n# \u00abAcademic\u00bb \u00abBackground\u00bb & \u00abCareer\u00bb Trajectory\n\n## \u00abAcademic\u00bb History & \u00abCurriculum\u00bb\n- **Core \u00abEngineering\u00bb Focus**: Computer Science & \u00abEngineering\u00bb.\n- **Subjects Studied**: Java Object-Oriented Programming...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\career_and_academic_profile.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -58.7407671578661,
+          "coverage": 1.0
+        },
+        {
+          "id": "pref_fitness_and_physical_development",
+          "title": "Fitness Regimen, Bodybuilding Protocol & Health Tracking",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "fitness-bodybuilding",
+          "importance": "normal",
+          "status": "active",
+          "version": 1,
+          "rank": -19.641354503505482,
+          "snippet": "\u00abFitness\u00bb \u00abRegimen\u00bb, \u00abBodybuilding\u00bb Protocol & Health Tracking\n# \u00abFitness\u00bb \u00abRegimen\u00bb & Athletic Development\n\n## Training Discipline\n- **Dedication**: Over 80 recorded historical consultations on gym \u00abworkouts\u00bb, muscle hypertrophy, and progressive...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\fitness_and_physical_development.md",
+          "updated_at": "2026-11-02T20:29:28.337081",
+          "composite_score": -27.497896304907673,
+          "coverage": 0.8
+        },
+        {
+          "id": "pref_communication_style",
+          "title": "Communication Style and Assistant Interaction Preferences",
+          "category": "01_PERSONAL_PREFERENCES",
+          "project": "global",
+          "importance": "high",
+          "status": "active",
+          "version": 1,
+          "rank": -14.964659254220537,
+          "snippet": "\u00abCommunication\u00bb \u00abStyle\u00bb and \u00abAssistant\u00bb \u00abInteraction\u00bb \u00abPreferences\u00bb\n# \u00abCommunication\u00bb \u00abStyle\u00bb & \u00abInteraction\u00bb \u00abPreferences\u00bb\n\n## \u00abPreferred\u00bb \u00abInteraction\u00bb Tone\n- **Concise & Direct**: Keep answers sharp, clear, and focused. Avoid corporate fluff, repetitive...",
+          "file_path": "C:\\Users\\Akshay aravind .rv\\LOCAL_AI_MEMORY\\01_PERSONAL_PREFERENCES\\communication_style.md",
+          "updated_at": "2026-11-01T08:30:00+05:30",
+          "composite_score": -25.814037213530426,
+          "coverage": 1.0
+        }
+      ],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 12,
+    "title": "Knowledge Gap Honest Handling",
+    "prompt": "What did I say earlier about scuba diving in Iceland?",
+    "duration_seconds": 7.95,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "I searched your local memory database for any record of you discussing scuba diving in Iceland, but there are no matching records found. It looks like that conversation isn't stored in your memory yet.",
+    "raw_result": {
+      "reply": "I searched your local memory database for any record of you discussing scuba diving in Iceland, but there are no matching records found. It looks like that conversation isn't stored in your memory yet.",
+      "sources": [],
+      "has_memory_context": true,
+      "action_meta": null
+    }
+  },
+  {
+    "test_num": 13,
+    "title": "Search Gateway Failure Handling",
+    "prompt": "Search failure test",
+    "duration_seconds": 2.25,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "[LIVE RESEARCH GATEWAY NOTICE: Deterministic live lookup for 'Who is the CEO of ImaginaryNonexistentCorp2026?' (news) was attempted at 2026-11-16 20:45:35. Gateway returned zero verified live records or encountered: No live hits. Honest response policy: Proceeding with existing offline indexed knowledge. Do NOT fabricate current events.]",
+    "raw_result": {
+      "reply": "[LIVE RESEARCH GATEWAY NOTICE: Deterministic live lookup for 'Who is the CEO of ImaginaryNonexistentCorp2026?' (news) was attempted at 2026-11-16 20:45:35. Gateway returned zero verified live records or encountered: No live hits. Honest response policy: Proceeding with existing offline indexed knowledge. Do NOT fabricate current events.]",
+      "ok": false
+    }
+  },
+  {
+    "test_num": 14,
+    "title": "Empty Search Results Handling",
+    "prompt": "Empty search test",
+    "duration_seconds": 1.96,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "[LIVE RESEARCH GATEWAY NOTICE: Deterministic live lookup for 'xyzabc123456789nonexistentquery' (cve) was attempted at 2026-11-16 20:45:37. Gateway returned zero verified live records or encountered: No live hits. Honest response policy: Proceeding with existing offline indexed knowledge. Do NOT fabricate current events.]",
+    "raw_result": {
+      "reply": "[LIVE RESEARCH GATEWAY NOTICE: Deterministic live lookup for 'xyzabc123456789nonexistentquery' (cve) was attempted at 2026-11-16 20:45:37. Gateway returned zero verified live records or encountered: No live hits. Honest response policy: Proceeding with existing offline indexed knowledge. Do NOT fabricate current events.]",
+      "ok": false
+    }
+  },
+  {
+    "test_num": 15,
+    "title": "Memory Database Unavailable Handling",
+    "prompt": "Memory DB unavailable test",
+    "duration_seconds": 0.03,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "Retrieved 0 memories safely.",
+    "raw_result": {
+      "reply": "Retrieved 0 memories safely.",
+      "ok": true
+    }
+  },
+  {
+    "test_num": 16,
+    "title": "Tool Not Registered Handling",
+    "prompt": "Tool not registered test",
+    "duration_seconds": 0.0,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "Execution result for nonexistent tool: Tool 'nonexistent_teleport_tool' not found.",
+    "raw_result": {
+      "reply": "Execution result for nonexistent tool: Tool 'nonexistent_teleport_tool' not found.",
+      "error": "Tool 'nonexistent_teleport_tool' not found."
+    }
+  },
+  {
+    "test_num": 17,
+    "title": "Fuzzy Workspace File Check",
+    "prompt": "Check orchestra.py",
+    "duration_seconds": 124.34,
+    "tool_executed": null,
+    "sources_count": 0,
+    "reply": "\n\u2705 [JARVIS OBJECTIVE COMPLETED]\nTask ID:        task-374fe966\nStatus:         COMPLETED\nSteps Executed: 2\nVerified Outcome:\nObjective verified and completed successfully in 2 steps.\n\nExecution Step Details:\n \u2022 Step 1: Verify that the file 'orchestra.py' exists in the workspace. [Tool: verify_file_exists]\n \u2022 Step 2: Read the contents of 'orchestra.py' to inspect its code. [Tool: read_file]\n\nVerification Evidence:\n - Verified: True | Evidence: All 2 steps verified with evidence:\nStep 1: Step 'Verify that the file 'orchestra.py' exists in the workspace.' completed successfully.\nStep 2: Step 'Read the contents of 'orchestra.py' to inspect its code.' completed successfully.",
+    "raw_result": {
+      "reply": "\n\u2705 [JARVIS OBJECTIVE COMPLETED]\nTask ID:        task-374fe966\nStatus:         COMPLETED\nSteps Executed: 2\nVerified Outcome:\nObjective verified and completed successfully in 2 steps.\n\nExecution Step Details:\n \u2022 Step 1: Verify that the file 'orchestra.py' exists in the workspace. [Tool: verify_file_exists]\n \u2022 Step 2: Read the contents of 'orchestra.py' to inspect its code. [Tool: read_file]\n\nVerification Evidence:\n - Verified: True | Evidence: All 2 steps verified with evidence:\nStep 1: Step 'Verify that the file 'orchestra.py' exists in the workspace.' completed successfully.\nStep 2: Step 'Read the contents of 'orchestra.py' to inspect its code.' completed successfully.",
+      "sources": [],
+      "has_memory_context": true,
+      "task_id": "task-374fe966",
+      "status": "completed",
+      "task": 

@@ -1,0 +1,230 @@
+"""
+FastAPI REST API Server for Operation Jarvis Agent Runtime.
+"""
+from typing import Any, Dict, List, Optional
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from pydantic import BaseModel, Field
+import psutil
+
+from config.settings import settings
+from core.types import TaskRecord, TaskStatus
+from core.orchestrator import orchestrator
+from core.llm_client import llm_client
+from storage.task_db import task_db
+from storage.audit_logger import audit_logger
+from registry.capability_registry import capability_registry
+from registry.memory_adapter import memory_adapter
+from registry.skill_adapter import skill_registry
+from security.policy_engine import policy_engine
+
+app = FastAPI(
+    title="Operation Jarvis — Autonomous Local Agent Runtime",
+    version="1.0.0",
+    description="Genuine agentic runtime around Qwen 3.5 9B with persistent memory, tool orchestration, policy enforcement, and verification."
+)
+
+class SubmitTaskRequest(BaseModel):
+    objective: str = Field(..., description="High-level goal or instruction for the agent")
+    approval_token: Optional[str] = None
+    async_execution: bool = False
+
+class ApproveTaskRequest(BaseModel):
+    request_id: str
+    approved: bool
+
+class ChatRequest(BaseModel):
+    message: str
+    include_memory: bool = True
+
+class VoiceQueryRequest(BaseModel):
+    query_text: str
+    auto_speak: bool = True
+
+# Task Endpoints
+@app.post("/api/v1/tasks", response_model=TaskRecord)
+def submit_task(req: SubmitTaskRequest, background_tasks: BackgroundTasks):
+    """Submits a new objective to the agent orchestrator."""
+    if req.async_execution:
+        # Create initial record in db
+        record = task_db.create_task(objective=req.objective)
+        background_tasks.add_task(orchestrator.execute_objective, req.objective, record.task_id, req.approval_token)
+        return record
+    else:
+        # Run synchronously to completion or approval gate
+        return orchestrator.execute_objective(
+            objective=req.objective,
+            approval_token=req.approval_token
+        )
+
+@app.get("/api/v1/tasks", response_model=List[TaskRecord])
+def list_tasks(status: Optional[TaskStatus] = None, limit: int = 50):
+    """Lists recent tasks with optional status filter."""
+    return task_db.list_tasks(status=status, limit=limit)
+
+@app.get("/api/v1/tasks/{task_id}", response_model=TaskRecord)
+def get_task(task_id: str):
+    """Gets complete task details including plan, completed steps, and verifications."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return task
+
+@app.post("/api/v1/tasks/{task_id}/resume", response_model=TaskRecord)
+def resume_task(task_id: str, approval_token: Optional[str] = None):
+    """Resumes an interrupted task or continues after approval."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return orchestrator.resume_task(task_id, approval_token=approval_token)
+
+@app.post("/api/v1/tasks/{task_id}/cancel", response_model=TaskRecord)
+def cancel_task(task_id: str, reason: str = "User cancelled."):
+    """Cancels a pending or running task."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return orchestrator.cancel_task(task_id, reason=reason)
+
+@app.post("/api/v1/tasks/{task_id}/approve", response_model=TaskRecord)
+def approve_restricted_action(task_id: str, req: ApproveTaskRequest):
+    """Resolves a pending Level 3 approval request."""
+    if req.approved:
+        policy_engine.grant_approval(req.request_id)
+    task_db.resolve_approval(req.request_id, req.approved)
+    
+    # Resume task execution if approved
+    if req.approved:
+        return orchestrator.resume_task(task_id, approval_token=req.request_id)
+    return task_db.get_task(task_id)
+
+@app.get("/api/v1/tasks/{task_id}/traces")
+def get_task_traces(task_id: str):
+    """Returns immutable JSONL execution traces and rolling audit logs for a task."""
+    traces = audit_logger.get_task_trace(task_id)
+    return {"task_id": task_id, "trace_count": len(traces), "events": traces}
+
+# Health & Capabilities
+@app.get("/api/v1/health")
+def health_check():
+    """System health check across LLM, GPU, Memory, and System Resources."""
+    ollama_ok = llm_client.is_healthy()
+    memory_status = memory_adapter.get_status()
+
+    # Hardware stats
+    cpu_percent = psutil.cpu_percent(interval=None)
+    ram = psutil.virtual_memory()
+
+    return {
+        "status": "online" if ollama_ok else "degraded",
+        "system": {
+            "platform": "Windows 11 (HP Victus 15)",
+            "cpu_percent": cpu_percent,
+            "ram_used_gb": round((ram.total - ram.available) / (1024**3), 2),
+            "ram_total_gb": round(ram.total / (1024**3), 2),
+            "ram_percent": ram.percent
+        },
+        "llm": {
+            "endpoint": settings.ollama_api_url,
+            "primary_model": settings.primary_model,
+            "healthy": ollama_ok
+        },
+        "memory_ecosystem": {
+            "total_budget_gb": 33.5,
+            "used_mb": memory_status.get("total_used_mb", 0),
+            "healthy": memory_status.get("healthy", True)
+        },
+        "capabilities": {
+            "registered_tools": len(capability_registry.list_tools()),
+            "discovered_skills": len(skill_registry.list_skills())
+        }
+    }
+
+@app.get("/api/v1/tools")
+def list_capabilities():
+    """Lists all registered tools with their parameter schemas and required permission levels."""
+    return capability_registry.list_tools()
+
+def is_action_objective(text: str) -> bool:
+    """Distinguishes autonomous action objectives from conversational questions."""
+    t = text.strip().lower()
+    if t.startswith(("/execute", "/task", "/run", "/exec", "/do", "task:", "objective:")):
+        return True
+    conversational_starts = (
+        "what is", "what are", "who is", "who are", "how does", "how do",
+        "why is", "why does", "explain", "describe", "tell me about",
+        "can you explain", "summarize", "define", "hello", "hi ", "hey "
+    )
+    if any(t.startswith(s) for s in conversational_starts):
+        action_verbs = ("create a file", "write a file", "delete the file", "run the command", "build the project")
+        if not any(v in t for v in action_verbs):
+            return False
+    action_prefixes = (
+        "create ", "write ", "generate a file", "make a file", "build ", "edit ",
+        "update file", "modify file", "delete ", "remove file", "run command",
+        "execute ", "install ", "verify ", "audit ", "fix ", "refactor "
+    )
+    if any(t.startswith(p) for p in action_prefixes):
+        return True
+    task_indicators = (
+        "and verify", "and check", "and test", "create a text file", "save it to",
+        "write it to disk", "run tests"
+    )
+    return any(ind in t for ind in task_indicators)
+
+# Conversational & Voice Bridge
+@app.post("/api/v1/chat")
+def direct_chat(req: ChatRequest):
+    """Direct conversation with Qwen augmented with personal memory retrieval."""
+    memories = []
+    if req.include_memory:
+        try:
+            memories = memory_adapter.search(req.message, limit=3)
+        except Exception:
+            pass
+
+    mem_context = "\n".join([f"- [{m.get('id')}]: {m.get('snippet')}" for m in memories]) if memories else "None"
+    sys_prompt = f"You are JARVIS, an autonomous local AI coworker on Windows 11.\nRelevant memories:\n{mem_context}"
+    
+    res = llm_client.chat([
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": req.message}
+    ])
+    return {
+        "reply": res["content"],
+        "sources": [m.get("id") for m in memories],
+        "duration_seconds": res.get("duration_seconds")
+    }
+
+@app.post("/api/v1/voice/query")
+def voice_query(req: VoiceQueryRequest):
+    """Voice workstation endpoint compatible with brain_router.py."""
+    if is_action_objective(req.query_text):
+        clean_text = re.sub(r"^/(?:task|execute|exec|do)\s+", "", req.query_text, flags=re.IGNORECASE).strip()
+        task = orchestrator.execute_objective(clean_text)
+        if task.status == TaskStatus.WAITING_FOR_APPROVAL:
+            pending = task_db.get_pending_approvals(task.task_id)
+            appr_reason = pending[0].reason if pending else "Restricted operation"
+            spoken_reply = f"Task {task.task_id} requires human approval: {appr_reason}."
+        elif task.status == TaskStatus.COMPLETED:
+            spoken_reply = f"Task {task.task_id} completed successfully. {task.final_outcome or 'All steps verified on disk.'}"
+        elif task.status == TaskStatus.FAILED:
+            spoken_reply = f"Task {task.task_id} failed: {task.error or 'Failed verification.'}"
+        else:
+            spoken_reply = f"Task {task.task_id} is currently in {task.status.value} state."
+
+        return {
+            "ok": True,
+            "brain": "qwen_jarvis_runtime",
+            "reply": spoken_reply,
+            "task_id": task.task_id,
+            "status": task.status.value,
+            "sources": []
+        }
+    else:
+        chat_res = direct_chat(ChatRequest(message=req.query_text, include_memory=True))
+        return {
+            "ok": True,
+            "brain": "qwen_jarvis_runtime",
+            "reply": chat_res["reply"],
+            "sources": chat_res["sources"]
+        }

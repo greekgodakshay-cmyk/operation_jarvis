@@ -1,0 +1,126 @@
+"""
+Dynamic Planning Engine for Operation Jarvis.
+Produces multi-step verifiable execution plans with relevant memory and skill grounding.
+"""
+import json
+from typing import Any, Dict, List, Optional
+from config.settings import settings
+from core.types import TaskPlan, ExecutionStep, StepStatus
+from core.llm_client import llm_client, LLMClientError
+from registry.capability_registry import capability_registry
+from registry.memory_adapter import memory_adapter
+from registry.skill_adapter import skill_registry
+
+PLANNER_SYSTEM_PROMPT = """You are the Senior Planning Engine for Operation Jarvis on Windows 11.
+Your task is to decompose the user's objective into a realistic, verifiable, step-by-step execution plan.
+
+Rules:
+1. Always ground your plan in the retrieved local memories and skills provided.
+2. Select appropriate registered tools from the available capabilities.
+3. When the objective involves Chrome, browser pages, web research, or inspecting emails / Gmail, select 'browser_read_gmail', 'browser_status', or 'browser_navigate'. Never claim browser access is unsupported.
+4. When the objective involves desktop automation, listing running applications, inspecting windows, or GUI interaction, select the registered 'desktop' tool with argument 'subcommand' (e.g. {"subcommand": "list-apps"} or {"subcommand": "status"}). Do not invent hypothetical tools like desktop_list_apps or interview-me.
+5. Every mutating action (writing files, running tests, modifying records) must be followed by a verification step. Read-only browser inspections do not mutate files.
+6. Output MUST be strictly valid JSON matching this schema:
+{
+  "reasoning": "Brief explanation of the strategy",
+  "steps": [
+    {
+      "step_number": 1,
+      "description": "Specific action to perform",
+      "tool_name": "name_of_tool_or_null",
+      "tool_arguments": {"arg1": "val1"}
+    }
+  ]
+}
+Do not include conversational filler.
+"""
+
+class DynamicPlanner:
+    def __init__(self):
+        self.llm = llm_client
+
+    def create_plan(self, objective: str) -> TaskPlan:
+        # 1. Retrieve relevant memory records
+        relevant_memories = []
+        try:
+            raw_memories = memory_adapter.search(query=objective, limit=3)
+            for m in raw_memories:
+                relevant_memories.append({
+                    "id": m.get("id"),
+                    "title": m.get("title"),
+                    "category": m.get("category"),
+                    "snippet": m.get("snippet")
+                })
+        except Exception:
+            pass
+
+        # 2. Retrieve relevant procedural skills
+        relevant_skills = skill_registry.find_relevant_skills(objective, max_count=2)
+        skill_context = "\n".join([f"- Skill '{s.name}': {s.description}" for s in relevant_skills])
+
+        # 3. Available tools summary
+        tools_summary = "\n".join([
+            f"- {t['name']} (Level {t['permission_level']}): {t['description']}"
+            for t in capability_registry.list_tools()
+        ])
+
+        # 4. Prompt Assembly
+        user_prompt = f"""OBJECTIVE:
+{objective}
+
+RELEVANT WORKSTATION MEMORIES:
+{json.dumps(relevant_memories, indent=2) if relevant_memories else "No specific memory matches found."}
+
+RELEVANT SKILLS:
+{skill_context if skill_context else "Standard operational procedures apply."}
+
+AVAILABLE CAPABILITIES:
+{tools_summary}
+
+Generate the step-by-step execution plan as valid JSON.
+"""
+        messages = [
+            {"role": "system", "content": PLANNER_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt}
+        ]
+
+        try:
+            res = self.llm.chat(messages, format_json=True, temperature=0.1)
+            parsed = self.llm.extract_json(res["content"])
+            
+            steps = []
+            for item in parsed.get("steps", []):
+                steps.append(ExecutionStep(
+                    step_number=item.get("step_number", len(steps) + 1),
+                    description=item.get("description", "Execute action"),
+                    tool_name=item.get("tool_name"),
+                    tool_arguments=item.get("tool_arguments", {}),
+                    status=StepStatus.PENDING
+                ))
+
+            if not steps:
+                raise ValueError("Plan returned 0 steps.")
+
+            return TaskPlan(
+                objective=objective,
+                reasoning=parsed.get("reasoning", "Autonomous plan generated."),
+                steps=steps,
+                relevant_memories=relevant_memories
+            )
+        except Exception as e:
+            # Fallback deterministic plan if LLM JSON decoding encounters unexpected formatting
+            fallback_step = ExecutionStep(
+                step_number=1,
+                description=f"Execute task objective: {objective}",
+                tool_name=None,
+                tool_arguments={},
+                status=StepStatus.PENDING
+            )
+            return TaskPlan(
+                objective=objective,
+                reasoning=f"Direct execution plan (planner fallback: {e})",
+                steps=[fallback_step],
+                relevant_memories=relevant_memories
+            )
+
+dynamic_planner = DynamicPlanner()

@@ -1,0 +1,68 @@
+{"id": "case-01", "query": "Read the first 50 lines of the config file settings.py", "expected_tool": "read_file", "category": "file_ops"}
+{"id": "case-02", "query": "Inspect the project structure in data/documents", "expected_tool": "list_dir", "category": "file_ops"}
+{"id": "case-03", "query": "Write a python script that computes Fibonacci numbers to scripts/fib.py", "expected_tool": "write_file", "category": "file_ops"}
+{"id": "case-04", "query": "Replace port 8000 with port 8080 in api/app.py", "expected_tool": "edit_file", "category": "file_ops"}
+{"id": "case-05", "query": "Check if the audit log file logs/audit_trail.jsonl exists", "expected_tool": "verify_file_exists", "category": "file_ops"}
+{"id": "case-06", "query": "Confirm that requirements.txt contains httpx", "expected_tool": "verify_file_content", "category": "file_ops"}
+{"id": "case-07", "query": "Run the test suite using pytest tests/test_calendar.py", "expected_tool": "run_command", "category": "file_ops"}
+{"id": "case-08", "query": "List all files in the current workspace directory", "expected_tool": "list_dir", "category": "file_ops"}
+{"id": "case-09", "query": "Take a snapshot of the Notepad application window", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-10", "query": "What desktop applications are currently running on my Victus laptop?", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-11", "query": "List all active desktop windows on the screen", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-12", "query": "Click the submit button in the active desktop app", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-13", "query": "Type 'hello world' into the active focused text box", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-14", "query": "Show the accessibility hierarchy tree of the calc window", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-15", "query": "Focus the Chrome browser desktop window", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-16", "query": "Check agent-desktop daemon connection status", "expected_tool": "desktop", "category": "desktop_ops"}
+{"id": "case-17", "query": "Search my memory database for Student Internship portal architecture", "expected_tool": "memory_search", "category": "memory"}
+{"id": "case-18", "query": "Remember that my bench press 1RM is 115kg as of November 2026", "expected_tool": "memory_store", "category": "memory"}
+{"id": "case-19", "query": "Update the memory regarding the VTU database exam syllabus", "expected_tool": "memory_update", "category": "memory"}
+{"id": "case-20", "query": "Recall all project decisions made for Mr Mysto YouTube channel", "expected_tool": "memory_search", "category": "memory"}
+{"id": "case-21", "query": "What did I decide about SQLite WAL mode checkpoints?", "expected_tool": "memory_search", "category": "memory"}
+{"id": "case-22", "query": "Store a note about multi-cloud backup encryption key rotation", "expected_tool": "memory_store", "category": "memory"}
+{"id": "case-23", "query": "Find the notes about my 4th semester CSE courses", "expected_tool": "memory_search", "category": "memory"}
+{"id": "case-24", "query": "Record that my current bodyweight is 78kg in my fitness memory", "expected_tool": "memory_store", "category": "memory"}
+{"id": "case-25", "query": "Search Google News for latest developments in AI workstations", "expected_tool": "search_news", "category": "web"}
+{"id": "case-26", "query": "Check arXiv for recent preprints on KV-cache compression algorithms", "expected_tool": "arxiv_search", "category": "web"}
+{"id": "case-27", "query": "Look up official CVE advisories for CVE-2026-1105", "expected_tool": "cve_search", "category": "web"}
+{"id": "case-28", "query": "Find Wikipedia article on B-tree indexing mechanics", "expected_tool": "wikipedia_search", "category": "web"}
+{"id": "case-29", "query": "Fetch the raw HTML content from https://example.com/api/docs", "expected_tool": "web_fetch", "category": "web"}
+{"id": "case-30", "query": "Search the web for RTX 4050 mobile CUDA compute capability", "expected_tool": "web_search", "category": "web"}
+{"id": "case-31", "query": "Look up recent vulnerabilities affecting OpenSSH 9.8", "expected_tool": "cve_search", "category": "web"}
+{"id": "case-32", "query": "Get latest news headlines regarding tech industry in India", "expected_tool": "search_news", "category": "web"}
+{"id": "case-33", "query": "Upload the PDF syllabus doc to document intelligence index", "expected_tool": "document_ingest", "category": "documents"}
+{"id": "case-34", "query": "Search my indexed PDF documents for database normalization rules", "expected_tool": "document_search", "category": "documents"}
+{"id": "case-35", "query": "Summarize the uploaded aeronautics manual with exact page citations", "expected_tool": "document_search", "category": "documents"}
+{"id": "case-36", "query": "Generate revision notes from the cybersecurity textbook chapters", "expected_tool": "document_search", "category": "documents"}
+{"id": "case-37", "query": "What is the bypass ratio mentioned in aeronautics_guide.pdf?", "expected_tool": "document_search", "category": "documents"}
+{"id": "case-38", "query": "List all documents currently indexed in document intelligence", "expected_tool": "document_list", "category": "documents"}
+{"id": "case-39", "query": "Extract text chunks from uploaded docx document", "expected_tool": "document_ingest", "category": "documents"}
+{"id": "case-40", "query": "List all documents to find doc-temp-123 for deletion", "expected_tool": "document_list", "category": "documents"}
+{"id": "case-41", "query": "Generate my daily operational morning briefing for today", "expected_tool": "daily_brief", "category": "assistant"}
+{"id": "case-42", "query": "Conduct deep research into Windows kernel security descriptors", "expected_tool": "deep_research", "category": "assistant"}
+{"id": "case-43", "query": "Build a YouTube concept for why you are not building muscle", "expected_tool": "youtube_concept", "category": "assistant"}
+{"id": "case-44", "query": "Check what calendar events and exam deadlines I have coming up", "expected_tool": "calendar_get_events", "category": "assistant"}
+{"id": "case-45", "query": "Suggest optimal workout time slots for tomorrow afternoon", "expected_tool": "calendar_suggest_slots", "category": "assistant"}
+{"id": "case-46", "query": "Draft a video script outline for Mr Mysto focusing on progressive overload", "expected_tool": "youtube_concept", "category": "assistant"}
+{"id": "case-47", "query": "Give me an operational summary of pending tasks and syllabus prep", "expected_tool": "daily_brief", "category": "assistant"}
+{"id": "case-48", "query": "Research SQLite atomic commit implementation across platforms", "expected_tool": "deep_research", "category": "assistant"}
+{"id": "case-49", "query": "What is the exact current date, time, weekday, and timezone on my PC?", "expected_tool": "get_current_time", "category": "temporal"}
+{"id": "case-50", "query": "What time is it right now on the system clock?", "expected_tool": "get_current_time", "category": "temporal"}
+{"id": "case-51", "query": "Tell me today's day of the week and local time", "expected_tool": "get_current_time", "category": "temporal"}
+{"id": "case-52", "query": "What is the host clock timestamp in ISO format?", "expected_tool": "get_current_time", "category": "temporal"}
+{"id": "case-53", "query": "Find the bug in core/types.py and run pytest tests/ to verify", "expected_tool": "run_command", "category": "composite"}
+{"id": "case-54", "query": "Read the error log and update memory with the fix details", "expected_tool": "read_file", "category": "composite"}
+{"id": "case-55", "query": "Fetch the web page and search for CVE mentions", "expected_tool": "web_fetch", "category": "composite"}
+{"id": "case-56", "query": "List all installed agent skills in the system", "expected_tool": "skillet_list", "category": "composite"}
+{"id": "case-57", "query": "Hello JARVIS, good morning!", "expected_tool": null, "category": "negative"}
+{"id": "case-58", "query": "Explain how Dijkstra's shortest path algorithm works conceptually", "expected_tool": null, "category": "negative"}
+{"id": "case-59", "query": "What is the difference between TCP and UDP at the transport layer?", "expected_tool": null, "category": "negative"}
+{"id": "case-60", "query": "Can you explain the philosophical concept of free will versus determinism?", "expected_tool": null, "category": "negative"}
+{"id": "case-61", "query": "Thank you for the explanation, that was very clear.", "expected_tool": null, "category": "negative"}
+{"id": "case-62", "query": "What is the speed of light in vacuum in meters per second?", "expected_tool": null, "category": "negative"}
+{"id": "case-63", "query": "How does hypertrophy occur at the myofibrillar level?", "expected_tool": null, "category": "negative"}
+{"id": "case-64", "query": "Explain what a deadlock is in operating systems and the four Coffman conditions", "expected_tool": null, "category": "negative"}
+{"id": "case-65", "query": "Yo Batman, what's up?", "expected_tool": null, "category": "negative"}
+{"id": "case-66", "query": "Write a short creative poem about late night coding", "expected_tool": null, "category": "negative"}
+{"id": "case-67", "query": "Why do neural networks suffer from vanishing gradients in deep sigmoid architectures?", "expected_tool": null, "category": "negative"}
+{"id": "case-68", "query": "That sounds good, I agree with that approach.", "expected_tool": null, "category": "negative"}

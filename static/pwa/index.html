@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0ea5e9">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>JARVIS Mobile Remote & Document Intelligence</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css?v=20261107_v2">
+</head>
+<body>
+  <div class="mobile-app">
+    <!-- Top Header -->
+    <header class="mobile-header">
+      <div class="brand">
+        <span class="logo">J</span>
+        <div class="brand-text">
+          <h1>JARVIS</h1>
+          <span class="host-text">VICTUS-15 // TAILSCALE</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <!-- Header Quick Upload Button -->
+        <button id="btnHeaderAttach" class="header-icon-btn" onclick="triggerFilePicker()" title="Upload Document (PDF, DOCX, PPTX, TXT)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hdr-icon">
+            <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+          </svg>
+        </button>
+
+        <!-- Document Library Trigger Button -->
+        <button id="btnDocsHeader" class="header-icon-btn" onclick="openDocsModal()" title="Document Library">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hdr-icon">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+            <polyline points="10 9 9 9 8 9"/>
+          </svg>
+          <span id="docCountBadge" class="doc-badge">0</span>
+        </button>
+
+        <!-- Voice Output Toggle Button (Spoken Responses) -->
+        <button id="btnVoiceToggle" class="header-icon-btn voice-toggle-btn" onclick="toggleVoiceOutput()" title="Toggle Voice Output for Text Messages">
+          <svg id="iconVoiceOn" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hdr-icon voice-icon" style="display: none;">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+          </svg>
+          <svg id="iconVoiceOff" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="hdr-icon voice-icon">
+            <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+            <line x1="23" y1="9" x2="17" y2="15"></line>
+            <line x1="17" y1="9" x2="23" y2="15"></line>
+          </svg>
+        </button>
+
+        <div id="statusDot" class="status-dot online" title="Workstation Connection Status"></div>
+        <button id="btnEStop" class="estop-btn" onclick="triggerMobileEmergencyStop()">STOP</button>
+      </div>
+    </header>
+
+    <!-- Workstation Offline Notice (if laptop is turned off) -->
+    <div id="offlineNotice" class="offline-banner" style="display: none;">
+      ⚠️ Laptop host offline. Ensure HP Victus is powered on and connected to Tailscale.
+    </div>
+
+    <!-- Pairing Modal / Screen (shown if no session token) -->
+    <div id="pairingScreen" class="pairing-container" style="display: none;">
+      <div class="pairing-card">
+        <h2>DEVICE PAIRING</h2>
+        <p>Enter the workstation pairing key configured on your HP Victus laptop.</p>
+        <input type="password" id="inputPairingKey" placeholder="Workstation Pairing Key" value="jarvis-victus-mobile-2026">
+        <button class="btn-primary" onclick="pairDevice()">Authenticate & Connect</button>
+      </div>
+    </div>
+
+    <!-- Main Chat & Voice View -->
+    <div id="mainView" class="main-container">
+      <!-- Approvals Alert Banner -->
+      <div id="pendingApprovalsBanner" class="approvals-banner" style="display: none;">
+        <span>⚠️ <strong id="pendingCount">0</strong> task(s) awaiting approval</span>
+        <button class="btn-sm" onclick="showApprovalsModal()">Review</button>
+      </div>
+
+      <!-- Chat Feed -->
+      <div id="chatFeed" class="chat-feed">
+        <div class="chat-msg jarvis-msg">
+          <div class="msg-bubble">
+            JARVIS remote intelligence online via Tailscale. Systems nominal on HP Victus host.
+            <div class="welcome-tip">
+              • Attach <strong>PDF, DOCX, PPTX, TXT</strong> to ground answers with citations.<br>
+              • Use <strong>Hold to Talk</strong> for voice or type complex queries below.<br>
+              • Full multi-document reasoning and exam preparation enabled.
+            </div>
+          </div>
+          <div class="msg-meta-row">
+            <span class="telemetry-badge local">LOCAL READY</span>
+            <span class="msg-time">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Document Context Bar (shows when user selects document(s)) -->
+      <div id="activeDocBar" class="active-doc-bar" style="display: none;">
+        <div class="active-doc-info">
+          <span class="doc-pill-icon">📄</span>
+          <span id="activeDocLabel" class="active-doc-label">Active Document</span>
+          <button class="active-doc-clear-btn" onclick="clearActiveDocument()" title="Clear Active Document">&times;</button>
+        </div>
+        <div class="quick-action-chips">
+          <button class="chip" onclick="sendQuickPrompt('Summarize this document thoroughly with exact section and page citations.')">Summarize</button>
+          <button class="chip" onclick="sendQuickPrompt('Provide a chapter-by-chapter / section-by-section breakdown of this document.')">Chapters</button>
+          <button class="chip" onclick="sendQuickPrompt('Create high-yield revision notes, definitions, and core formulas from this document.')">Revision Notes</button>
+          <button class="chip" onclick="sendQuickPrompt('Generate 3 exam practice questions (MCQ + Short Answer) with answer keys from this text.')">Exam Prep</button>
+        </div>
+      </div>
+
+      <!-- File Upload Staging Tray (shown when user selects files before upload) -->
+      <div id="uploadStagingTray" class="upload-staging-tray" style="display: none;">
+        <div class="staging-header">
+          <span>SELECTED DOCUMENTS (<span id="stagedCount">0</span>)</span>
+          <button class="btn-text-sm" onclick="clearStagedFiles()">Clear</button>
+        </div>
+        <div id="stagedFilesList" class="staged-files-list"></div>
+        <div id="uploadProgressContainer" class="upload-progress-container" style="display: none;">
+          <div class="progress-bar-track">
+            <div id="uploadProgressBar" class="progress-bar-fill"></div>
+          </div>
+          <div id="uploadProgressText" class="progress-text">Processing and indexing with SQLite FTS5...</div>
+        </div>
+        <div class="staging-actions">
+          <button id="btnUploadSubmit" class="btn-primary-sm" onclick="uploadStagedFiles()">Upload & Index</button>
+          <button class="btn-cancel-sm" onclick="clearStagedFiles()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Hidden Native Android File Picker -->
+      <input type="file" id="filePicker" multiple
+             accept=".pdf,.docx,.pptx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
+             style="display: none;" onchange="handleFilesSelected(event)">
+
+      <!-- Hidden Audio Player for Kokoro Spoken Responses -->
+      <audio id="audioPlayer" playsinline></audio>
+
+      <!-- Bottom Voice & Text Controls -->
+      <footer class="voice-footer">
+        <div class="ptt-container">
+          <button id="btnPtt" class="ptt-btn" 
+                  onmousedown="startPtt()" onmouseup="stopPtt()"
+                  ontouchstart="startPtt(event)" ontouchend="stopPtt(event)">
+            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <div id="pttStatus" class="ptt-label">HOLD TO TALK</div>
+        </div>
+
+        <!-- Chat Input Row with Attachment Button -->
+        <div class="composer-row">
+          <!-- Attachment Button -->
+          <button id="btnAttach" class="btn-attach" onclick="triggerFilePicker()" title="Attach Document (PDF, DOCX, PPTX, TXT)">
+            <svg class="attach-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+            </svg>
+          </button>
+
+          <!-- Text Input -->
+          <input type="text" id="inputTextFallback" placeholder="Ask a question or task..." onkeydown="handleInputKey(event)">
+
+          <!-- Send Button -->
+          <button class="btn-send" onclick="sendTextMessage()">Send</button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Document Library Modal -->
+    <div id="docsModal" class="modal" style="display: none;">
+      <div class="modal-content doc-modal-content">
+        <div class="modal-header">
+          <div class="modal-title-row">
+            <h3>DOCUMENT LIBRARY</h3>
+            <span id="docLibCount" class="modal-badge">0 Docs</span>
+          </div>
+          <button class="btn-close" onclick="closeDocsModal()">&times;</button>
+        </div>
+        <div class="doc-modal-actions">
+          <button class="btn-primary-sm" onclick="triggerFilePickerFromModal()">+ Upload Documents</button>
+          <button class="btn-secondary-sm" onclick="fetchAndRenderDocuments()">↻ Refresh</button>
+          <button id="btnQueryAllDocs" class="btn-secondary-sm" onclick="selectContextAllDocs()">Query All Docs</button>
+        </div>
+        <div id="modalDocsList" class="modal-body docs-list-body">
+          <p class="text-muted">Loading documents...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approvals Modal -->
+    <div id="approvalsModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>RESTRICTED TASK APPROVALS</h3>
+          <button class="btn-close" onclick="closeApprovalsModal()">&times;</button>
+        </div>
+        <div id="modalApprovalsList" class="modal-body">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js?v=20261107_v2"></script>
+</body>
+</html>

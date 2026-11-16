@@ -1,0 +1,48 @@
+{
+  "test_1_bengaluru": {
+    "ok": true,
+    "summary": "Currently in Bengaluru, Karnataka, India, it's 22.5\u00b0C (feels like 22.0\u00b0C) with partly cloudy conditions. Humidity is 55%, with a wind speed of 9.6 km/h. Precipitation is 0.0 mm (rain probability today is 0%). These are the latest available observations retrieved at 08:56 PM."
+  },
+  "test_2_tokyo": {
+    "ok": true,
+    "summary": "Currently in Tokyo, Japan, it's 11.8\u00b0C (feels like 10.5\u00b0C) with partly cloudy conditions. Humidity is 69%, with a wind speed of 2.3 km/h. Precipitation is 0.0 mm (rain probability today is 100%). These are the latest available observations retrieved at 08:56 PM."
+  },
+  "test_3_default_location": {
+    "ok": true,
+    "location": "Bengaluru, Karnataka, India"
+  },
+  "test_4_tomorrow_forecast": {
+    "ok": true,
+    "forecast": {
+      "date": "2026-11-17",
+      "condition": "Overcast",
+      "max_temp_c": 29.1,
+      "min_temp_c": 18.8,
+      "rain_probability_pct": 0
+    }
+  },
+  "test_5_rain_probability": {
+    "ok": true,
+    "rain_probability_today": 0
+  },
+  "test_6_invalid_location": {
+    "ok": true,
+    "error": "Location 'xyznonexistentcity987654321' could not be resolved by geocoding service."
+  },
+  "test_7_timeout": {
+    "ok": true,
+    "error": "Geocoding failed: Request timed out after 5.0 seconds"
+  },
+  "test_8_no_internet": {
+    "ok": true,
+    "error": "Geocoding network error: <urlopen error Network unreachable>"
+  },
+  "test_9_malformed_response": {
+    "ok": true,
+    "error": "Weather provider returned empty or malformed payload."
+  },
+  "test_10_voice_weather": {
+    "ok": true,
+    "banner": "\n[LIVE WEATHER INTELLIGENCE - OPEN-METEO PROVIDER]\nLocation: Bengaluru, Karnataka, India\nProvenance: [Cached observation from 08:56 PM]\nCurrent: 22.5\u00b0C (feels like 22.0\u00b0C), Partly cloudy, Humidity: 55%, Wind: 9.6 km/h, Precipitation: 0.0 mm\nToday's Forecast: Max 27.8\u00b0C / Min 18.9\u00b0C, Rain prob: 0%\nTomorrow's Forecast (2026-11-17): Max 29.1\u00b0C / Min 18.8\u00b0C, Overcast, Rain prob: 0%\nRetrieval Time: 2026-11-16T20:56:10.407934\nNatural Summary: [Cached: 08:56 PM] Currently in Bengaluru, Karnataka, India, it's 22.5\u00b0C (feels like 22.0\u00b0C) with partly cloudy conditions. Humidity is 55%, with a wind speed of 9.6 km/h. Precipitation is 0.0 mm (rain probability today is 0%). These are the latest available observations retrieved at 08:56 PM.\nStrict Policy: State observation and retrieval times clearly. Distinguish live vs cached. Never fabricate weather values.\n"
+  }
+}

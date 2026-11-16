@@ -1,0 +1,618 @@
+"""
+Document Intelligence Engine for Operation JARVIS.
+Ingests, extracts, chunks, and indexes PDF, DOCX, TXT, and Markdown documents
+into an isolated SQLite FTS5 index with deduplication and exact source citations.
+"""
+from datetime import datetime
+import hashlib
+import json
+import logging
+import os
+from pathlib import Path
+import re
+import sqlite3
+import time
+from typing import Any, Dict, List, Optional, Tuple, Union
+import uuid
+import zipfile
+import xml.etree.ElementTree as ET
+
+from config.settings import settings
+
+logger = logging.getLogger("jarvis.doc_intel")
+
+DOC_DB_PATH = settings.task_db_path.parent / "document_index.db"
+
+INIT_DOC_SQL = """
+CREATE TABLE IF NOT EXISTS documents (
+    doc_id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    file_path TEXT UNIQUE NOT NULL,
+    file_type TEXT NOT NULL,
+    file_size_bytes INTEGER NOT NULL,
+    content_hash TEXT NOT NULL,
+    total_pages INTEGER DEFAULT 1,
+    total_chunks INTEGER NOT NULL,
+    ingested_at TEXT NOT NULL,
+    metadata_json TEXT DEFAULT '{}'
+);
+
+CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(content_hash);
+
+CREATE TABLE IF NOT EXISTS chunks (
+    chunk_id TEXT PRIMARY KEY,
+    doc_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    page_number INTEGER DEFAULT 1,
+    section_title TEXT,
+    text_content TEXT NOT NULL,
+    char_count INTEGER NOT NULL,
+    chunk_hash TEXT NOT NULL,
+    FOREIGN KEY(doc_id) REFERENCES documents(doc_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_chunks_doc_id ON chunks(doc_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
+    chunk_id UNINDEXED,
+    doc_id UNINDEXED,
+    filename,
+    text_content,
+    tokenize='porter unicode61'
+);
+"""
+
+class DocumentIntelligence:
+    def __init__(self, db_path: Path = DOC_DB_PATH):
+        self.db_path = db_path
+        self._init_db()
+
+    def _get_conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
+        conn.row_factory = sqlite3.Row
+        conn.execute("PRAGMA journal_mode = WAL;")
+        conn.execute("PRAGMA foreign_keys = ON;")
+        return conn
+
+    def _init_db(self):
+        with self._get_conn() as conn:
+            conn.executescript(INIT_DOC_SQL)
+
+    def extract_text(self, file_path: Path) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+        """
+        Extracts structured text from PDF, DOCX, TXT, and Markdown files.
+        Returns: (pages_data, metadata)
+        pages_data: [{"page_number": int, "text": str}]
+        """
+        ext = file_path.suffix.lower()
+        pages = []
+        meta = {"filename": file_path.name, "extension": ext}
+
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(str(file_path))
+            meta["total_pages"] = len(reader.pages)
+            for idx, p in enumerate(reader.pages, 1):
+                text = p.extract_text() or ""
+                pages.append({"page_number": idx, "text": text.strip()})
+
+        elif ext == ".docx":
+            # Extract via zipfile and XML parse (100% robust, no Word required)
+            with zipfile.ZipFile(str(file_path), "r") as z:
+                xml_content = z.read("word/document.xml")
+                root = ET.fromstring(xml_content)
+                # XML namespace for WordprocessingML
+                ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+                paras = []
+                for p in root.iterfind(".//w:p", ns):
+                    texts = [node.text for node in p.iterfind(".//w:t", ns) if node.text]
+                    if texts:
+                        paras.append("".join(texts))
+                full_text = "\n\n".join(paras)
+                pages.append({"page_number": 1, "text": full_text.strip()})
+                meta["total_pages"] = 1
+
+        elif ext in (".pptx", ".ppt"):
+            # Extract PowerPoint slide text via zipfile and XML parse (100% robust, no Office required)
+            with zipfile.ZipFile(str(file_path), "r") as z:
+                slide_names = [n for n in z.namelist() if re.match(r"^ppt/slides/slide\d+\.xml$", n)]
+                slide_names.sort(key=lambda n: int(re.search(r"\d+", n).group()) if re.search(r"\d+", n) else 0)
+                meta["total_pages"] = max(len(slide_names), 1)
+                for idx, s_name in enumerate(slide_names, 1):
+                    root = ET.fromstring(z.read(s_name))
+                    paras = []
+                    for p in root.iter():
+                        if p.tag.endswith("}p"):
+                            p_text = "".join([t.text for t in p.iter() if t.tag.endswith("}t") and t.text])
+                            if p_text.strip():
+                                paras.append(p_text.strip())
+                    slide_text = "\n".join(paras).strip()
+                    if slide_text:
+                        pages.append({"page_number": idx, "text": slide_text})
+
+        elif ext in (".xlsx", ".xlsm"):
+            # Extract Excel worksheet data via zipfile and XML parse (100% robust, no Office required)
+            with zipfile.ZipFile(str(file_path), "r") as z:
+                shared_strings = []
+                if "xl/sharedStrings.xml" in z.namelist():
+                    ss_root = ET.fromstring(z.read("xl/sharedStrings.xml"))
+                    for si in ss_root.iter():
+                        if si.tag.endswith("}t") and si.text:
+                            shared_strings.append(si.text)
+
+                sheet_names = [n for n in z.namelist() if re.match(r"^xl/worksheets/sheet\d+\.xml$", n)]
+                meta["total_pages"] = max(len(sheet_names), 1)
+                for idx, s_name in enumerate(sheet_names, 1):
+                    s_root = ET.fromstring(z.read(s_name))
+                    rows = []
+                    for row in s_root.iter():
+                        if row.tag.endswith("}row"):
+                            cell_vals = []
+                            for c in row.iter():
+                                if c.tag.endswith("}v") and c.text:
+                                    val = c.text
+                                    if val.isdigit() and int(val) < len(shared_strings):
+                                        val = shared_strings[int(val)]
+                                    cell_vals.append(val)
+                            if cell_vals:
+                                rows.append(" | ".join(cell_vals))
+                    sheet_text = "\n".join(rows).strip()
+                    if sheet_text:
+                        pages.append({"page_number": idx, "text": sheet_text})
+
+        elif ext in (".txt", ".md", ".json", ".log", ".py", ".csv"):
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                content = f.read()
+            pages.append({"page_number": 1, "text": content.strip()})
+            meta["total_pages"] = 1
+
+        else:
+            raise ValueError(f"Unsupported document format '{ext}'. Supported: PDF, DOCX, PPTX, TXT, MD.")
+
+        return pages, meta
+
+    def chunk_document(
+        self,
+        pages_data: List[Dict[str, Any]],
+        chunk_size: int = 700,
+        chunk_overlap: int = 100
+    ) -> List[Dict[str, Any]]:
+        """Splits document pages into overlapping semantic chunks."""
+        chunks = []
+        global_idx = 1
+
+        for page in pages_data:
+            p_num = page["page_number"]
+            text = page["text"]
+            if not text:
+                continue
+
+            # Normalized whitespace
+            clean = re.sub(r"[ \t]+", " ", text).strip()
+            start = 0
+            while start < len(clean):
+                end = min(start + chunk_size, len(clean))
+                # Break on punctuation or space if possible
+                if end < len(clean):
+                    last_punct = max(clean.rfind(". ", start, end), clean.rfind("\n", start, end))
+                    if last_punct != -1 and last_punct > start + (chunk_size // 2):
+                        end = last_punct + 1
+
+                chunk_text = clean[start:end].strip()
+                if chunk_text:
+                    c_hash = hashlib.sha256(chunk_text.encode("utf-8")).hexdigest()
+                    chunks.append({
+                        "chunk_index": global_idx,
+                        "page_number": p_num,
+                        "text_content": chunk_text,
+                        "char_count": len(chunk_text),
+                        "chunk_hash": c_hash
+                    })
+                    global_idx += 1
+
+                start += chunk_size - chunk_overlap
+                if start >= len(clean) or end >= len(clean):
+                    break
+
+        return chunks
+
+    def ingest_document(
+        self,
+        file_path: Union[str, Path],
+        force_reindex: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Ingests a document, avoids duplicate indexing via SHA-256 hash,
+        chunks text and stores into SQLite and FTS5 index.
+        """
+        file_path = Path(file_path)
+        if not file_path.exists():
+            return {"ok": False, "error": f"File not found: {file_path}"}
+
+        # Calculate file content hash
+        with open(file_path, "rb") as f:
+            file_hash = hashlib.sha256(f.read()).hexdigest()
+
+        # Check existing
+        with self._get_conn() as conn:
+            existing = conn.execute(
+                "SELECT * FROM documents WHERE file_path = ?",
+                (str(file_path),)
+            ).fetchone()
+
+            if existing:
+                if existing["content_hash"] == file_hash and not force_reindex:
+                    return {
+                        "ok": True,
+                        "status": "already_indexed",
+                        "doc_id": existing["doc_id"],
+                        "filename": existing["filename"],
+                        "total_chunks": existing["total_chunks"],
+                        "message": "Document is already indexed and up to date."
+                    }
+                else:
+                    # File modified, delete old record and chunks
+                    conn.execute("DELETE FROM documents WHERE doc_id = ?", (existing["doc_id"],))
+                    conn.execute("DELETE FROM chunks_fts WHERE doc_id = ?", (existing["doc_id"],))
+
+        # Extract & Chunk
+        try:
+            pages, meta = self.extract_text(file_path)
+            chunks = self.chunk_document(pages)
+        except Exception as e:
+            return {"ok": False, "error": f"Failed to extract document '{file_path.name}': {e}"}
+
+        if not chunks:
+            return {"ok": False, "error": f"Document '{file_path.name}' contains no extractable text (it may be image-only or scanned). OCR is not configured."}
+
+        doc_id = f"doc-{uuid.uuid4().hex[:8]}"
+        now = datetime.now().isoformat()
+        file_size = file_path.stat().st_size
+
+        with self._get_conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO documents (
+                    doc_id, filename, file_path, file_type, file_size_bytes,
+                    content_hash, total_pages, total_chunks, ingested_at, metadata_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    doc_id, file_path.name, str(file_path), file_path.suffix.lower().replace(".", ""),
+                    file_size, file_hash, meta.get("total_pages", 1), len(chunks), now, json.dumps(meta)
+                )
+            )
+
+            for c in chunks:
+                cid = f"chk-{uuid.uuid4().hex[:8]}"
+                conn.execute(
+                    """
+                    INSERT INTO chunks (
+                        chunk_id, doc_id, chunk_index, page_number,
+                        text_content, char_count, chunk_hash
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (cid, doc_id, c["chunk_index"], c["page_number"], c["text_content"], c["char_count"], c["chunk_hash"])
+                )
+
+                conn.execute(
+                    """
+                    INSERT INTO chunks_fts (chunk_id, doc_id, filename, text_content)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (cid, doc_id, file_path.name, c["text_content"])
+                )
+
+        return {
+            "ok": True,
+            "status": "ingested",
+            "doc_id": doc_id,
+            "filename": file_path.name,
+            "file_type": file_path.suffix.lower(),
+            "total_pages": meta.get("total_pages", 1),
+            "total_chunks": len(chunks),
+            "file_size_bytes": file_size
+        }
+
+    def search_documents(
+        self,
+        query: str,
+        limit: int = 5,
+        doc_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Searches chunks using SQLite FTS5 BM25 ranking.
+        Returns ranked matching chunks with exact source citations.
+        """
+        clean_query = re.sub(r"[^\w\s]", " ", query).strip()
+        if not clean_query:
+            return []
+
+        tokens = clean_query.split()
+        fts_match = " OR ".join([f'"{t}"*' for t in tokens if len(t) > 2])
+        if not fts_match:
+            fts_match = f'"{clean_query}"*'
+
+        sql = """
+        SELECT 
+            c.chunk_id,
+            c.doc_id,
+            c.chunk_index,
+            c.page_number,
+            c.text_content,
+            d.filename,
+            d.file_path,
+            d.file_type,
+            bm25(chunks_fts) as rank
+        FROM chunks_fts f
+        JOIN chunks c ON f.chunk_id = c.chunk_id
+        JOIN documents d ON c.doc_id = d.doc_id
+        WHERE chunks_fts MATCH ?
+        """
+        params: List[Any] = [fts_match]
+        if doc_id:
+            sql += " AND c.doc_id = ?"
+            params.append(doc_id)
+
+        sql += " ORDER BY rank ASC LIMIT ?"
+        params.append(limit)
+
+        with self._get_conn() as conn:
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            except sqlite3.OperationalError:
+                # Fallback to simple like search
+                rows = conn.execute(
+                    """
+                    SELECT c.chunk_id, c.doc_id, c.chunk_index, c.page_number, c.text_content,
+                           d.filename, d.file_path, d.file_type, 1.0 as rank
+                    FROM chunks c
+                    JOIN documents d ON c.doc_id = d.doc_id
+                    WHERE LOWER(c.text_content) LIKE ?
+                    LIMIT ?
+                    """,
+                    (f"%{clean_query.lower()}%", limit)
+                ).fetchall()
+
+            results = []
+            for r in rows:
+                snippet = r["text_content"][:240] + ("..." if len(r["text_content"]) > 240 else "")
+                citation = f"[{r['filename']} (Page {r['page_number']}, Chunk {r['chunk_index']})](file:///{r['file_path'].replace(os.sep, '/')})"
+                results.append({
+                    "chunk_id": r["chunk_id"],
+                    "doc_id": r["doc_id"],
+                    "filename": r["filename"],
+                    "file_path": r["file_path"],
+                    "file_type": r["file_type"],
+                    "page_number": r["page_number"],
+                    "chunk_index": r["chunk_index"],
+                    "citation": citation,
+                    "snippet": snippet,
+                    "text_content": r["text_content"],
+                    "relevance_rank": round(float(r["rank"]), 4)
+                })
+
+            return results
+
+    def list_documents(self) -> List[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT * FROM documents ORDER BY ingested_at DESC").fetchall()
+            return [dict(r) for r in rows]
+
+    def get_document(self, doc_id: str) -> Optional[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM documents WHERE doc_id = ?", (doc_id,)).fetchone()
+            return dict(row) if row else None
+
+    def get_document_chunks(self, doc_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        with self._get_conn() as conn:
+            rows = conn.execute(
+                """
+                SELECT c.chunk_id, c.doc_id, c.chunk_index, c.page_number, c.text_content,
+                       d.filename, d.file_path, d.file_type, 1.0 as rank
+                FROM chunks c
+                JOIN documents d ON c.doc_id = d.doc_id
+                WHERE c.doc_id = ?
+                ORDER BY c.chunk_index ASC
+                LIMIT ?
+                """,
+                (doc_id, limit)
+            ).fetchall()
+            results = []
+            for r in rows:
+                snippet = r["text_content"][:240] + ("..." if len(r["text_content"]) > 240 else "")
+                citation = f"[{r['filename']} (Page {r['page_number']}, Chunk {r['chunk_index']})](file:///{r['file_path'].replace(os.sep, '/')})"
+                results.append({
+                    "chunk_id": r["chunk_id"],
+                    "doc_id": r["doc_id"],
+                    "filename": r["filename"],
+                    "file_path": r["file_path"],
+                    "file_type": r["file_type"],
+                    "page_number": r["page_number"],
+                    "chunk_index": r["chunk_index"],
+                    "citation": citation,
+                    "snippet": snippet,
+                    "text_content": r["text_content"],
+                    "relevance_rank": 1.0
+                })
+            return results
+
+    def delete_document(self, doc_id: str, delete_file: bool = True) -> bool:
+        with self._get_conn() as conn:
+            doc = conn.execute("SELECT file_path FROM documents WHERE doc_id = ?", (doc_id,)).fetchone()
+            conn.execute("DELETE FROM chunks_fts WHERE doc_id = ?", (doc_id,))
+            conn.execute("DELETE FROM chunks WHERE doc_id = ?", (doc_id,))
+            cur = conn.execute("DELETE FROM documents WHERE doc_id = ?", (doc_id,))
+            deleted = cur.rowcount > 0
+
+        if deleted and doc and delete_file:
+            try:
+                p = Path(doc["file_path"])
+                if p.exists() and "uploads" in str(p):
+                    p.unlink(missing_ok=True)
+            except Exception as e:
+                logger.warning(f"Could not delete physical file for doc {doc_id}: {e}")
+
+        return deleted
+
+    def query_documents(
+        self,
+        query: str,
+        doc_ids: Optional[List[str]] = None,
+        task_type: str = "qa",
+        max_chunks: int = 6,
+        prefer_local: bool = True,
+        num_predict: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Document-grounded question answering, summarization, exam prep, and revision.
+        Retrieves relevant chunks, formats strict citations, routes through ModelRouter,
+        and queries local Qwen to provide strictly grounded answers.
+        """
+        from core.llm_client import llm_client
+        from core.model_router import model_router
+
+        t0 = time.perf_counter()
+        clean_query = query.strip()
+
+        # 1. Chunk Retrieval
+        matching_chunks: List[Dict[str, Any]] = []
+
+        if doc_ids and len(doc_ids) == 1:
+            matching_chunks = self.search_documents(clean_query, limit=max_chunks, doc_id=doc_ids[0])
+            # If FTS matched nothing or user requested summary/notes/exam prep, fetch sequential chunks
+            if len(matching_chunks) < 2 and task_type in ("summary", "chapter_explanation", "revision_notes", "exam_questions", "mock_test"):
+                matching_chunks = self.get_document_chunks(doc_ids[0], limit=max_chunks)
+        elif doc_ids and len(doc_ids) > 1:
+            # Multi-document search across selected IDs
+            for d_id in doc_ids:
+                res = self.search_documents(clean_query, limit=max(2, max_chunks // len(doc_ids)), doc_id=d_id)
+                matching_chunks.extend(res)
+                if len(matching_chunks) < 2 and task_type in ("summary", "chapter_explanation", "revision_notes", "exam_questions", "mock_test"):
+                    matching_chunks.extend(self.get_document_chunks(d_id, limit=3))
+        else:
+            # Search across all indexed documents
+            matching_chunks = self.search_documents(clean_query, limit=max_chunks)
+
+        # 2. Check if any context found
+        if not matching_chunks:
+            return {
+                "ok": True,
+                "reply": "The indexed documents do not contain information relevant to your question.",
+                "citations": [],
+                "documents_consulted": [],
+                "found_relevant_context": False,
+                "task_type": task_type,
+                "model_used": "qwen-text:latest",
+                "is_cloud": False,
+                "routing_reason": "No relevant document chunks matched query.",
+                "latency_ms": round((time.perf_counter() - t0) * 1000.0, 2),
+                "token_usage": {"prompt_tokens": 0, "completion_tokens": 0}
+            }
+
+        # 3. Format citations and context excerpts
+        context_blocks = []
+        citations = []
+        seen_keys = set()
+        seen_hashes = set()
+        for c in matching_chunks[:max_chunks]:
+            c_hash = c.get("chunk_hash") or hashlib.sha256(c["text_content"].encode("utf-8")).hexdigest()
+            if c_hash in seen_hashes:
+                continue
+            seen_hashes.add(c_hash)
+
+            key = f"{c['filename']}:{c['page_number']}"
+            if key not in seen_keys:
+                citations.append({
+                    "filename": c["filename"],
+                    "page_number": c["page_number"],
+                    "chunk_index": c["chunk_index"],
+                    "file_path": c["file_path"],
+                    "citation": f"[{c['filename']} (Page {c['page_number']}, Chunk {c['chunk_index']})]",
+                    "snippet": c.get("snippet") or c["text_content"][:240]
+                })
+                seen_keys.add(key)
+
+            context_blocks.append(
+                f"--- SOURCE: {c['filename']} | Page {c['page_number']} | Chunk {c['chunk_index']} ---\n{c['text_content']}\n"
+            )
+
+        joined_context = "\n".join(context_blocks)
+
+        # 4. Prompt formulation by task type
+        task_instructions = {
+            "qa": "Answer the question directly, concisely, and factually based strictly on the document excerpts below.",
+            "summary": "Provide a clear, structured executive summary of the document contents, highlighting key sections and main conclusions.",
+            "chapter_explanation": "Provide a chapter-by-chapter / section-by-section breakdown of the topics discussed in the excerpts.",
+            "revision_notes": "Create high-yield revision notes: core definitions, essential bullet points, key equations/metrics, and takeaways.",
+            "exam_questions": "Generate a practice exam based on the text: 1) 3 Multiple-Choice Questions with answer keys, 2) 3 Short-Answer Questions with model answers, and 3) 1 Conceptual Discussion Question.",
+            "mock_test": "Generate a full mock test paper based on these documents with questions and corresponding answer guides.",
+            "comparison": "Compare and contrast the viewpoints, metrics, and details across the different document sources provided."
+        }
+        instruction = task_instructions.get(task_type, task_instructions["qa"])
+
+        system_prompt = f"""You are JARVIS, an autonomous document intelligence assistant on Windows 11.
+Strict Grounding Guidelines:
+1. Base your answer strictly on the provided document excerpts below. Do NOT hallucinate or assume facts outside these excerpts.
+2. For every key point or factual claim, cite the source using the exact format: [Filename, Page X] (or [Filename, Slide X]).
+3. If the excerpts do not contain the answer or details requested, explicitly state: "The indexed documents do not contain information relevant to your question."
+4. Directly output the complete, grounded answer without processing narration, preamble, diagnostics, or reasoning scratchpads.
+5. Instruction: {instruction}
+
+DOCUMENT EXCERPTS:
+{joined_context}"""
+
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": clean_query}
+        ]
+
+        # 5. Route task via model_router
+        # Keep documents strictly private and local on user's machine
+        routing = model_router.route_task(clean_query, prefer_local=prefer_local, allow_cloud_privacy=False)
+        chosen_model = "qwen-text:latest" if routing.selected_tier == "local_qwen_text" else routing.model_name
+
+        pred_tokens = num_predict if num_predict is not None else (512 if task_type == "qa" else 768)
+
+        try:
+            chat_res = llm_client.chat(
+                messages=messages,
+                model=chosen_model,
+                allow_cloud=False,  # strictly enforce local processing for private documents
+                temperature=0.2,
+                num_predict=pred_tokens,
+                think=False
+            )
+            reply_text = chat_res.get("content", "")
+            model_used = chat_res.get("model_used", chosen_model)
+            prompt_tokens = chat_res.get("prompt_eval_count", 0)
+            completion_tokens = chat_res.get("eval_count", 0)
+            is_ok = True
+        except Exception as err:
+            reply_text = f"Document inference unavailable: {str(err)}. Context was retrieved successfully but local LLM inference failed."
+            model_used = chosen_model
+            prompt_tokens = 0
+            completion_tokens = 0
+            is_ok = False
+
+        latency = round((time.perf_counter() - t0) * 1000.0, 2)
+        docs_consulted = sorted(list({c["filename"] for c in matching_chunks}))
+
+        return {
+            "ok": is_ok,
+            "reply": reply_text,
+            "citations": citations,
+            "documents_consulted": docs_consulted,
+            "found_relevant_context": True,
+            "task_type": task_type,
+            "model_used": model_used,
+            "is_cloud": False,
+            "routing_reason": routing.reason,
+            "latency_ms": latency,
+            "token_usage": {
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens
+            }
+        }
+
+doc_intelligence = DocumentIntelligence()

@@ -1,0 +1,73 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual Environments
+.venv/
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Environment Variables & Secrets (CRITICAL SECURITY)
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.token
+credentials.json
+token.json
+data/mobile_auth.json
+
+# Databases & Private State (CRITICAL PRIVACY)
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite3
+data/*.bin
+data/audio_cache/
+data/uploads/
+data/uv_cache/
+data/repo_eval/
+!data/.gitkeep
+LOCAL_AI_MEMORY/
+07_MEMORY_INDEX/
+
+# Logs & Rolling Audit Trails
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Playwright & Browsers
+.playwright-mcp/
+playwright-report/
+test-results/
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Editor & OS Artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Scratch & Temporary
+scratch/
+tmp/
+temp/

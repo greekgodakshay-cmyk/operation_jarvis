@@ -1,0 +1,240 @@
+{
+  "schema_version": "1.0.0",
+  "workstation": "HP Victus 15-fa2382TX (Windows 11, Intel Core 5 210H, 24GB RAM, RTX 4050 6GB VRAM)",
+  "updated_at": "2026-11-15T23:44:06.234767",
+  "base_directory": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills",
+  "total_external_repositories_evaluated": 9,
+  "total_integrated_capabilities": 8,
+  "repositories": [
+    {
+      "name": "detect-secrets",
+      "repository_url": "https://github.com/Yelp/detect-secrets",
+      "pinned_commit": "5e141933554a0b74e7341841f318be21e895339c",
+      "license": "Apache 2.0",
+      "category": "Security Auditing & Secret Leakage Defense",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills\\detect-secrets",
+      "dependencies": [
+        "pyyaml",
+        "requests"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only static scanning, PathJail enforced)",
+      "classification": "local_first",
+      "registered_tools": [
+        "security_scan_secrets"
+      ],
+      "responsible_agents": [
+        "security-auditor",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Credential detection, high-entropy evaluation, redaction, clean content, PathJail)",
+      "security_audit_status": "CLEAN (0 telemetry, 0 tracking, 0 obfuscation triggers)",
+      "status": "active"
+    },
+    {
+      "name": "bandit",
+      "repository_url": "https://github.com/PyCQA/bandit",
+      "pinned_commit": "2d5467c45c3189f4d7d07e8022276bc73a478abd",
+      "license": "Apache 2.0",
+      "category": "Reusable Coding & Software Engineering (SAST)",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills\\bandit",
+      "dependencies": [
+        "rich",
+        "stevedore",
+        "pyyaml",
+        "colorama"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only AST inspection, PathJail enforced)",
+      "classification": "local_first",
+      "registered_tools": [
+        "security_audit_code"
+      ],
+      "responsible_agents": [
+        "code-reviewer",
+        "security-auditor",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (B102, B602, B608, B301, B303, B501, syntax error handling)",
+      "security_audit_status": "CLEAN (0 telemetry, 0 tracking, 0 obfuscation triggers)",
+      "status": "active"
+    },
+    {
+      "name": "markitdown",
+      "repository_url": "https://github.com/microsoft/markitdown",
+      "pinned_commit": "ed178952a6672abdfd35b5f9e76a80b6cefc086e",
+      "license": "MIT",
+      "category": "Document Intelligence & Multi-Format Markdown Conversion",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills\\markitdown",
+      "dependencies": [
+        "beautifulsoup4",
+        "markdownify",
+        "openpyxl",
+        "lxml",
+        "pandas",
+        "python-pptx"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only document conversion, PathJail enforced)",
+      "classification": "local_first",
+      "registered_tools": [
+        "document_convert_markdown"
+      ],
+      "mcp_server": "markitdown-mcp",
+      "responsible_agents": [
+        "research",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Tabular CSV/JSON conversion, pipe table structure, missing file handling, PathJail)",
+      "security_audit_status": "CLEAN (0 telemetry, 0 tracking, 0 obfuscation triggers)",
+      "status": "active"
+    },
+    {
+      "name": "mcp-servers (sequentialthinking)",
+      "repository_url": "https://github.com/modelcontextprotocol/servers",
+      "pinned_commit": "e1dc4b18dbb948921da37f3d4224a628730b43b0",
+      "license": "MIT / Apache 2.0",
+      "category": "Planning, Reasoning & Problem Solving",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills\\mcp-servers\\src\\sequentialthinking",
+      "dependencies": [
+        "@modelcontextprotocol/server",
+        "zod",
+        "Node.js >= 24"
+      ],
+      "permissions": "LEVEL_1_SAFE (In-memory reflective reasoning)",
+      "classification": "local_first",
+      "registered_tools": [
+        "sequential_thinking"
+      ],
+      "mcp_server": "sequential-thinking",
+      "responsible_agents": [
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Step tracking, revision, branching, reset)",
+      "security_audit_status": "CLEAN (0 telemetry, 0 tracking, 0 obfuscation triggers)",
+      "status": "active"
+    },
+    {
+      "name": "vigil-llm",
+      "repository_url": "https://github.com/deadbits/vigil-llm",
+      "pinned_commit": "f2b4c134d060bae81d29fad07003f3c657e63fc8",
+      "license": "Apache 2.0",
+      "category": "Security Auditing & Prompt-Injection Defense",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\external_skills\\vigil-llm",
+      "dependencies": [
+        "base64",
+        "re",
+        "unicodedata"
+      ],
+      "permissions": "LEVEL_1_SAFE (In-memory text analysis)",
+      "classification": "local_first",
+      "registered_tools": [
+        "security_injection_scan"
+      ],
+      "responsible_agents": [
+        "security-auditor",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Direct override, zero-width obfuscation, base64 payload, markdown exfiltration, canary tokens)",
+      "security_audit_status": "CLEAN (0 telemetry, 0 tracking, 0 obfuscation triggers)",
+      "status": "active"
+    },
+    {
+      "name": "windows-diagnostics",
+      "repository_url": "Native Workstation Architecture",
+      "pinned_commit": "HEAD",
+      "license": "Workstation Architecture Native",
+      "category": "Windows and PowerShell Automation & Forensics",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\registry\\system_diagnostics.py",
+      "dependencies": [
+        "psutil",
+        "powershell.exe"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only system inspection, bounded queries)",
+      "classification": "local_first",
+      "registered_tools": [
+        "windows_diagnostics"
+      ],
+      "responsible_agents": [
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (system_info, network_ports, services, event_logs)",
+      "security_audit_status": "CLEAN (0 cloud calls, strict PowerShell parameter sanitization)",
+      "status": "active"
+    },
+    {
+      "name": "tabular-data-profiler",
+      "repository_url": "Native Tabular Science Architecture",
+      "pinned_commit": "HEAD",
+      "license": "MIT (JARVIS Builtin)",
+      "category": "Data Analysis & Visualization",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\registry\\data_tools.py",
+      "dependencies": [
+        "csv",
+        "io",
+        "json",
+        "math"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only tabular analysis)",
+      "classification": "local_first",
+      "registered_tools": [
+        "data_profile_tabular"
+      ],
+      "responsible_agents": [
+        "research",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Column type inference, summary statistics, missing value ratios, ASCII histograms)",
+      "security_audit_status": "CLEAN",
+      "status": "active"
+    },
+    {
+      "name": "fact-claim-verifier",
+      "repository_url": "Native Fact Checking Architecture",
+      "pinned_commit": "HEAD",
+      "license": "MIT (JARVIS Builtin)",
+      "category": "Research & Fact-Checking",
+      "installation_path": "C:\\Users\\Akshay aravind .rv\\operation_jarvis\\registry\\fact_tools.py",
+      "dependencies": [
+        "internet_gateway",
+        "memory_adapter"
+      ],
+      "permissions": "LEVEL_1_SAFE (Read-only cross-source retrieval)",
+      "classification": "hybrid (local memory + read-only live web search)",
+      "registered_tools": [
+        "verify_factual_claims"
+      ],
+      "responsible_agents": [
+        "research",
+        "antigravity",
+        "qwen-batman"
+      ],
+      "test_results": "18/18 PASS (Consensus stance scoring, provenance links, empty input validation)",
+      "security_audit_status": "CLEAN",
+      "status": "active"
+    },
+    {
+      "name": "protectai/llm-guard",
+      "repository_url": "https://github.com/protectai/llm-guard",
+      "pinned_commit": "N/A",
+      "license": "MIT",
+      "category": "Security Auditing & LLM Guardrails",
+      "installation_path": "N/A",
+      "dependencies": [
+        "torch",
+        "transformers"
+      ],
+      "permissions": "N/A",
+      "classification": "cloud/heavy",
+      "registered_tools": [],
+      "responsible_agents": [],
+      "test_results": "Evaluated during discovery",
+      "security_audit_status": "REJECTED (Project archived by Protect AI; heavy PyTorch dependencies conflict with local Qwen VRAM budget)",
+      "status": "rejected"
+    }
+  ]
+}

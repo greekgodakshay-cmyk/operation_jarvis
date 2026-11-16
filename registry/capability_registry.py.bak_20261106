@@ -1,0 +1,530 @@
+"""
+Central Capability Registry for Operation Jarvis.
+Unifies Native Tools, Memory Adapters, Desktop Automation, and MCP Services.
+"""
+import time
+import uuid
+from typing import Any, Callable, Dict, List, Optional
+from core.types import PermissionLevel, ToolCall, ToolResult
+from security.policy_engine import policy_engine, ApprovalRequiredError
+from security.injection_guard import injection_guard
+from security.secret_redactor import redact_structure
+from storage.audit_logger import audit_logger
+
+from registry.native_tools import (
+    tool_read_file, tool_write_file, tool_edit_file, tool_list_dir,
+    tool_run_command, tool_verify_file_exists, tool_verify_file_content,
+    tool_verify_test_execution, tool_search_skills, tool_read_skill
+)
+from registry.memory_adapter import memory_adapter
+from registry.desktop_adapter import desktop_adapter
+from registry.browser_adapter import browser_adapter
+
+class Capability:
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        parameters: Dict[str, Any],
+        permission_level: PermissionLevel,
+        handler: Callable[..., Any],
+        timeout_seconds: float = 60.0
+    ):
+        self.name = name
+        self.description = description
+        self.parameters = parameters
+        self.permission_level = permission_level
+        self.handler = handler
+        self.timeout_seconds = timeout_seconds
+
+class CapabilityRegistry:
+    def __init__(self):
+        self._tools: Dict[str, Capability] = {}
+        self._register_default_tools()
+
+    def register(self, capability: Capability):
+        self._tools[capability.name] = capability
+
+    def get_tool(self, name: str) -> Optional[Capability]:
+        return self._tools.get(name)
+
+    def list_tools(self) -> List[Dict[str, Any]]:
+        return [
+            {
+                "name": cap.name,
+                "description": cap.description,
+                "parameters": cap.parameters,
+                "permission_level": cap.permission_level.value
+            }
+            for cap in self._tools.values()
+        ]
+
+    def list_tool_definitions_for_llm(self) -> List[Dict[str, Any]]:
+        """Formats tool definitions for Ollama / Qwen function calling format."""
+        defs = []
+        for cap in self._tools.values():
+            defs.append({
+                "type": "function",
+                "function": {
+                    "name": cap.name,
+                    "description": cap.description,
+                    "parameters": cap.parameters
+                }
+            })
+        return defs
+
+    def execute_tool(
+        self,
+        name: str,
+        arguments: Dict[str, Any],
+        task_id: str,
+        step_number: int = 1,
+        approval_token: Optional[str] = None
+    ) -> ToolResult:
+        call_id = f"call-{uuid.uuid4().hex[:8]}"
+        if name not in self._tools:
+            return ToolResult(
+                call_id=call_id,
+                tool_name=name,
+                success=False,
+                error=f"Tool '{name}' is not registered in capability registry."
+            )
+
+        cap = self._tools[name]
+        tool_call = ToolCall(
+            call_id=call_id,
+            tool_name=name,
+            arguments=arguments,
+            permission_level=cap.permission_level
+        )
+
+        # 1. Policy & Permission Enforcement
+        can_exec, approval_req, reason = policy_engine.evaluate_tool_execution(
+            task_id=task_id,
+            step_number=step_number,
+            tool_call=tool_call,
+            approval_token=approval_token
+        )
+
+        if not can_exec:
+            if approval_req:
+                raise ApprovalRequiredError(approval_req)
+            return ToolResult(
+                call_id=call_id,
+                tool_name=name,
+                success=False,
+                error=f"Permission Denied: {reason}"
+            )
+
+        # 2. Audit Trail Log: Tool Call Invocation
+        audit_logger.log_event(
+            task_id=task_id,
+            event_type="tool_call",
+            details={
+                "call_id": call_id,
+                "tool_name": name,
+                "arguments": tool_call.arguments,
+                "permission_level": cap.permission_level.value
+            }
+        )
+
+        # 3. Execution with Timing and Error Handling
+        start_time = time.time()
+        try:
+            output = cap.handler(**arguments)
+            duration_ms = (time.time() - start_time) * 1000.0
+
+            # Wrap string outputs in prompt-injection guard
+            sanitized_output = output
+            if isinstance(output, str):
+                sanitized_output = injection_guard.wrap_untrusted_content(output, source_identifier=name)
+            elif isinstance(output, dict) and "content" in output and isinstance(output["content"], str):
+                output["content"] = injection_guard.wrap_untrusted_content(output["content"], source_identifier=name)
+
+            # Redact secrets in result
+            clean_output = redact_structure(sanitized_output)
+
+            res = ToolResult(
+                call_id=call_id,
+                tool_name=name,
+                success=output.get("ok", True) if isinstance(output, dict) else True,
+                output=clean_output,
+                error=output.get("error") if isinstance(output, dict) else None,
+                duration_ms=round(duration_ms, 2)
+            )
+        except Exception as e:
+            duration_ms = (time.time() - start_time) * 1000.0
+            res = ToolResult(
+                call_id=call_id,
+                tool_name=name,
+                success=False,
+                error=str(e),
+                duration_ms=round(duration_ms, 2)
+            )
+
+        # 4. Audit Trail Log: Tool Result
+        audit_logger.log_event(
+            task_id=task_id,
+            event_type="tool_result",
+            details={
+                "call_id": call_id,
+                "tool_name": name,
+                "success": res.success,
+                "error": res.error,
+                "duration_ms": res.duration_ms
+            }
+        )
+
+        # 5. OpenTelemetry Live Ingestion to Tracelet
+        try:
+            from storage.tracelet_exporter import tracelet_exporter
+            tracelet_exporter.export_tool_call_trace(
+                task_id=task_id,
+                tool_name=name,
+                arguments=arguments,
+                output=res.output,
+                duration_ms=res.duration_ms,
+                success=res.success,
+                error_msg=res.error
+            )
+        except Exception:
+            pass
+
+        return res
+
+    def _register_default_tools(self):
+        # Native File Inspection & Writing
+        self.register(Capability(
+            name="read_file",
+            description="Read lines from a file safely within workspace bounds.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Absolute or relative file path"},
+                    "start_line": {"type": "integer", "default": 1},
+                    "end_line": {"type": "integer"}
+                },
+                "required": ["path"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_read_file
+        ))
+
+        self.register(Capability(
+            name="list_dir",
+            description="List items inside a directory safely within workspace bounds.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Directory path"},
+                    "recursive": {"type": "boolean", "default": False}
+                },
+                "required": ["path"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_list_dir
+        ))
+
+        self.register(Capability(
+            name="write_file",
+            description="Write full contents to a file within workspace bounds.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Target file path"},
+                    "content": {"type": "string", "description": "File text content"},
+                    "overwrite": {"type": "boolean", "default": False}
+                },
+                "required": ["path", "content"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=tool_write_file
+        ))
+
+        self.register(Capability(
+            name="edit_file",
+            description="Replace target substring with replacement in an existing file.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "Target file path"},
+                    "target": {"type": "string", "description": "Exact text to replace"},
+                    "replacement": {"type": "string", "description": "New replacement text"}
+                },
+                "required": ["path", "target", "replacement"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=tool_edit_file
+        ))
+
+        self.register(Capability(
+            name="run_command",
+            description="Run a controlled shell command or test script with defense-in-depth inspection.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "command": {"type": "string", "description": "Command line string"},
+                    "working_dir": {"type": "string", "description": "Optional working directory"},
+                    "timeout": {"type": "number", "default": 60.0}
+                },
+                "required": ["command"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=tool_run_command
+        ))
+
+        # Verification Tools
+        self.register(Capability(
+            name="verify_file_exists",
+            description="Verify that a required file exists and check its size.",
+            parameters={
+                "type": "object",
+                "properties": {"path": {"type": "string", "description": "File path to verify"}},
+                "required": ["path"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_verify_file_exists
+        ))
+
+        self.register(Capability(
+            name="verify_file_content",
+            description="Verify that a file contains an expected substring.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "path": {"type": "string", "description": "File path"},
+                    "expected_substring": {"type": "string", "description": "Expected content to assert"}
+                },
+                "required": ["path", "expected_substring"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_verify_file_content
+        ))
+
+        self.register(Capability(
+            name="verify_test_suite",
+            description="Run an automated test suite command (e.g. pytest) and verify passing exit code.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "test_command": {"type": "string", "description": "Test command (e.g. pytest tests/)"},
+                    "working_dir": {"type": "string"}
+                },
+                "required": ["test_command"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=tool_verify_test_execution
+        ))
+
+        # Memory Integration Tools
+        self.register(Capability(
+            name="memory_search",
+            description="Search persistent local memory and project knowledge using BM25 FTS5.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query keywords"},
+                    "category": {"type": "string", "description": "Optional category filter"},
+                    "project": {"type": "string", "description": "Optional project identifier"},
+                    "limit": {"type": "integer", "default": 5}
+                },
+                "required": ["query"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=memory_adapter.search
+        ))
+
+        self.register(Capability(
+            name="memory_store",
+            description="Store a verified factual memory record in the persistent local memory ecosystem.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string", "description": "Title of the memory"},
+                    "content": {"type": "string", "description": "Markdown body"},
+                    "category": {"type": "string", "description": "Optional category"},
+                    "project": {"type": "string", "default": "global"},
+                    "importance": {"type": "string", "enum": ["critical", "high", "normal", "low"], "default": "normal"},
+                    "tags": {"type": "array", "items": {"type": "string"}}
+                },
+                "required": ["title", "content"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=memory_adapter.store
+        ))
+
+        self.register(Capability(
+            name="memory_update",
+            description="Update an existing memory record with version tracking and changelog.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "target_id_or_title": {"type": "string", "description": "Memory ID or title"},
+                    "content": {"type": "string", "description": "New content"},
+                    "changelog": {"type": "string", "description": "Reason for revision"}
+                },
+                "required": ["target_id_or_title", "content", "changelog"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=memory_adapter.update
+        ))
+
+        self.register(Capability(
+            name="memory_status",
+            description="Check storage health and utilization budgets of the persistent memory ecosystem.",
+            parameters={"type": "object", "properties": {}},
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=memory_adapter.get_status
+        ))
+
+        # Desktop Automation Tool (matches Qwen /tools registry)
+        self.register(Capability(
+            name="desktop",
+            description="Execute native desktop automation via Vercel Agent Desktop CLI (list-apps, list-windows, snapshot, get, click, set-value).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "subcommand": {
+                        "type": "string",
+                        "description": "CLI subcommand and arguments, e.g. 'list-apps', 'list-windows', 'snapshot', 'status'"
+                    }
+                },
+                "required": ["subcommand"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=desktop_adapter.execute_subcommand
+        ))
+
+        # Skill Discovery & Progressive Disclosure Tools
+        self.register(Capability(
+            name="search_skills",
+            description="Search available procedural skills across plugins (superpowers, ponytail, ui-ux, etc.).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Keywords or task description to match skills"},
+                    "limit": {"type": "integer", "default": 5}
+                },
+                "required": ["query"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_search_skills
+        ))
+
+        self.register(Capability(
+            name="read_skill",
+            description="Read the complete procedural instructions and workflow rules for a specific skill.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Exact or partial name of the skill"}
+                },
+                "required": ["name"]
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=tool_read_skill
+        ))
+
+        # Browser & Web Automation Tools
+        self.register(Capability(
+            name="browser_status",
+            description="Check status of Chrome process, Playwright MCP, and Chrome DevTools MCP.",
+            parameters={"type": "object", "properties": {}},
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=browser_adapter.get_status
+        ))
+
+        self.register(Capability(
+            name="browser_list_pages",
+            description="List all active browser pages and tabs in the Chrome session.",
+            parameters={"type": "object", "properties": {}},
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=browser_adapter.list_pages
+        ))
+
+        self.register(Capability(
+            name="browser_navigate",
+            description="Navigate browser to target URL with bounded timeout and load completion.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Destination URL"},
+                    "timeout": {"type": "number", "default": 15.0}
+                },
+                "required": ["url"]
+            },
+            permission_level=PermissionLevel.LEVEL_2_CONTROLLED,
+            handler=browser_adapter.navigate
+        ))
+
+        self.register(Capability(
+            name="browser_snapshot",
+            description="Capture text and accessibility tree snapshot of the current browser page.",
+            parameters={"type": "object", "properties": {}},
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=browser_adapter.snapshot
+        ))
+
+        self.register(Capability(
+            name="browser_read_gmail",
+            description="Inspect the user's Chrome Gmail session and read emails for a specified date (read-only; never sends or modifies).",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "date_query": {"type": "string", "default": "5 November 2026", "description": "Date or search filter for emails"},
+                    "date": {"type": "string", "description": "Date filter (e.g. 2026-11-05 or 5 November 2026)"}
+                }
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=browser_adapter.read_gmail
+        ))
+
+        # Skillet Skills Package Manager Tools
+        def _exec_skillet_search(query: str = "") -> Dict[str, Any]:
+            import subprocess, json
+            cli_path = r"C:\Users\Akshay aravind .rv\operation_jarvis\data\repo_eval\final_toolkit\skillet\src\cli.js"
+            cmd = ["node", cli_path, "search"]
+            if query:
+                cmd.append(query)
+            cmd.append("--json")
+            try:
+                cf = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15, creationflags=cf)
+                return {"ok": res.returncode == 0, "results": json.loads(res.stdout.strip()) if res.stdout.strip() else []}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        def _exec_skillet_list() -> Dict[str, Any]:
+            import subprocess, json
+            cli_path = r"C:\Users\Akshay aravind .rv\operation_jarvis\data\repo_eval\final_toolkit\skillet\src\cli.js"
+            target_dir = r"C:\Users\Akshay aravind .rv\.gemini\config\plugins\skillet_skills\skills"
+            cmd = ["node", cli_path, "list", "--dir", target_dir, "--json"]
+            try:
+                cf = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000) if sys.platform == "win32" else 0
+                res = subprocess.run(cmd, capture_output=True, text=True, timeout=15, creationflags=cf)
+                return {"ok": res.returncode == 0, "installed": json.loads(res.stdout.strip()) if res.stdout.strip() else []}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+
+        self.register(Capability(
+            name="skillet_search",
+            description="Search the Skillet agent skill registry for installable procedural skills.",
+            parameters={
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search keyword for skills (e.g. 'pdf', 'git', 'eval')"}
+                }
+            },
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=_exec_skillet_search
+        ))
+
+        self.register(Capability(
+            name="skillet_list",
+            description="List installed procedural skills in the workstation skillet repository.",
+            parameters={"type": "object", "properties": {}},
+            permission_level=PermissionLevel.LEVEL_1_SAFE,
+            handler=_exec_skillet_list
+        ))
+
+capability_registry = CapabilityRegistry()

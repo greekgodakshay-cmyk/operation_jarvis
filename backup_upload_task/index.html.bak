@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0ea5e9">
+  <title>JARVIS Mobile Remote</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="mobile-app">
+    <!-- Top Header -->
+    <header class="mobile-header">
+      <div class="brand">
+        <span class="logo">J</span>
+        <div class="brand-text">
+          <h1>JARVIS</h1>
+          <span class="host-text">VICTUS-15 // TAILSCALE</span>
+        </div>
+      </div>
+      <div class="header-right">
+        <div id="statusDot" class="status-dot online"></div>
+        <button id="btnEStop" class="estop-btn" onclick="triggerMobileEmergencyStop()">STOP</button>
+      </div>
+    </header>
+
+    <!-- Workstation Offline Notice (if laptop is turned off) -->
+    <div id="offlineNotice" class="offline-banner" style="display: none;">
+      ⚠️ Laptop host offline. Ensure HP Victus is powered on and connected to Tailscale.
+    </div>
+
+    <!-- Pairing Modal / Screen (shown if no session token) -->
+    <div id="pairingScreen" class="pairing-container" style="display: none;">
+      <div class="pairing-card">
+        <h2>DEVICE PAIRING</h2>
+        <p>Enter the workstation pairing key configured on your HP Victus laptop.</p>
+        <input type="password" id="inputPairingKey" placeholder="Workstation Pairing Key" value="jarvis-victus-mobile-2026">
+        <button class="btn-primary" onclick="pairDevice()">Authenticate & Connect</button>
+      </div>
+    </div>
+
+    <!-- Main Chat & Voice View -->
+    <div id="mainView" class="main-container">
+      <!-- Approvals Alert Pill -->
+      <div id="pendingApprovalsBanner" class="approvals-banner" style="display: none;">
+        <span>⚠️ <strong id="pendingCount">0</strong> task(s) awaiting approval</span>
+        <button class="btn-sm" onclick="showApprovalsModal()">Review</button>
+      </div>
+
+      <!-- Chat Feed -->
+      <div id="chatFeed" class="chat-feed">
+        <div class="chat-msg jarvis-msg">
+          <div class="msg-bubble">
+            JARVIS remote connection established via Tailscale. Systems nominal on HP Victus host. Press and hold below to speak.
+          </div>
+          <span class="msg-time">Ready</span>
+        </div>
+      </div>
+
+      <!-- Hidden Audio Player for Kokoro Spoken Responses -->
+      <audio id="audioPlayer" playsinline></audio>
+
+      <!-- Bottom Voice Controls -->
+      <footer class="voice-footer">
+        <div class="ptt-container">
+          <button id="btnPtt" class="ptt-btn" 
+                  onmousedown="startPtt()" onmouseup="stopPtt()"
+                  ontouchstart="startPtt(event)" ontouchend="stopPtt(event)">
+            <svg class="mic-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <div id="pttStatus" class="ptt-label">HOLD TO TALK</div>
+        </div>
+
+        <!-- Text Input Fallback Row -->
+        <div class="text-fallback-row">
+          <input type="text" id="inputTextFallback" placeholder="Or type a message to JARVIS...">
+          <button class="btn-send" onclick="sendTextMessage()">Send</button>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Approvals Modal -->
+    <div id="approvalsModal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>RESTRICTED TASK APPROVALS</h3>
+          <button class="btn-close" onclick="closeApprovalsModal()">&times;</button>
+        </div>
+        <div id="modalApprovalsList" class="modal-body">
+          <!-- Populated by app.js -->
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,97 @@
+"""
+Model Routing and Tier Classification Engine for Operation JARVIS.
+Directs tasks to Local Qwen 3.5 9B by default for zero-cost, private execution,
+and evaluates when task complexity or scope warrants escalation to Antigravity Cloud.
+"""
+import enum
+import re
+from typing import Any, Dict, List, Optional
+from pydantic import BaseModel, Field
+
+class ModelTier(str, enum.Enum):
+    LOCAL_QWEN = "local_qwen_3.5_9b"
+    LOCAL_QWEN_BATMAN = "local_qwen_batman"
+    ANTIGRAVITY_CLOUD = "antigravity_orchestrator"
+
+class RoutingDecision(BaseModel):
+    selected_tier: ModelTier
+    model_name: str
+    is_cloud: bool
+    confidence: float
+    reason: str
+    task_classification: str
+    requires_external_research: bool
+
+class ModelRouter:
+    """
+    Intelligent router analyzing user objective complexity, privacy requirements,
+    and computational needs.
+    """
+    # Tasks suited for Local Qwen
+    LOCAL_INDICATORS = [
+        r"\b(status|summary|explain|what is|how do i|search memory|find memory)\b",
+        r"\b(file|read|write|edit|list|dir|desktop|app|window)\b",
+        r"\b(python|script|test|pytest|git|commit|status)\b",
+        r"\b(calculate|format|convert|translate)\b",
+        r"\b(batman|personal|preference|victus|laptop|hardware)\b"
+    ]
+
+    # Tasks that may require cloud-tier orchestration
+    COMPLEX_CLOUD_INDICATORS = [
+        r"\b(full architecture|multi-repo|cross-cloud|cloud migration|terraform)\b",
+        r"\b(deep adversarial red-teaming|complex formal verification)\b",
+        r"\b(million token context|massive codebase re-architecture)\b"
+    ]
+
+    # Research indicators requiring live internet
+    RESEARCH_INDICATORS = [
+        r"\b(latest|current|today|this week|recent|news|announcement)\b",
+        r"\b(cve|vulnerability|zero-day|advisory|patch)\b",
+        r"\b(paper|arxiv|research|breakthrough|release)\b",
+        r"\b(compare current|what's happening in)\b"
+    ]
+
+    def route_task(self, objective: str, prefer_local: bool = True) -> RoutingDecision:
+        cleaned = objective.strip()
+        lower = cleaned.lower()
+
+        # Check research requirement
+        needs_research = any(re.search(pat, lower) for pat in self.RESEARCH_INDICATORS)
+
+        # 1. Check for explicit complex cloud requirements
+        has_cloud_indicator = any(re.search(pat, lower) for pat in self.COMPLEX_CLOUD_INDICATORS)
+        if has_cloud_indicator and not prefer_local:
+            return RoutingDecision(
+                selected_tier=ModelTier.ANTIGRAVITY_CLOUD,
+                model_name="gemini-3.8-flash",
+                is_cloud=True,
+                confidence=0.85,
+                reason="Task requires large-scale multi-repo cross-domain orchestration exceeding local VRAM context.",
+                task_classification="Complex System Architecture",
+                requires_external_research=needs_research
+            )
+
+        # 2. Check for Batman personal workstation partner dynamic
+        if any(k in lower for k in ["batman", "my workstation", "my projects", "internship", "backup"]):
+            return RoutingDecision(
+                selected_tier=ModelTier.LOCAL_QWEN_BATMAN,
+                model_name="qwen-batman:latest",
+                is_cloud=False,
+                confidence=0.98,
+                reason="Task matches personal workstation thinking partner and memory context.",
+                task_classification="Personal Workstation Copilot",
+                requires_external_research=needs_research
+            )
+
+        # 3. Default Local Qwen 3.5 9B (Autonomous tool execution, coding, memory, and research)
+        return RoutingDecision(
+            selected_tier=ModelTier.LOCAL_QWEN,
+            model_name="qwen3.5:9b",
+            is_cloud=False,
+            confidence=0.95,
+            reason="Task is well-suited for high-efficiency local Qwen 3.5 9B reasoning with zero privacy leakage.",
+            task_classification="Local Engineering & Autonomous Execution",
+            requires_external_research=needs_research
+        )
+
+model_router = ModelRouter()

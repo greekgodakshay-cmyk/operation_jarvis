@@ -1,0 +1,636 @@
+"""
+FastAPI REST API Server for Operation Jarvis Agent Runtime.
+"""
+from typing import Any, Dict, List, Optional
+from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
+from fastapi.responses import RedirectResponse, PlainTextResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
+from pydantic import BaseModel, Field
+import psutil
+import re
+import time
+
+from config.settings import settings
+from core.types import TaskRecord, TaskStatus
+from core.orchestrator import orchestrator
+from core.llm_client import llm_client
+from storage.task_db import task_db
+from storage.audit_logger import audit_logger
+from registry.capability_registry import capability_registry
+from registry.memory_adapter import memory_adapter
+from registry.skill_adapter import skill_registry
+from security.policy_engine import policy_engine
+
+app = FastAPI(
+    title="Operation Jarvis — Autonomous Local Agent Runtime",
+    version="1.0.0",
+    description="Genuine agentic runtime around Qwen 3.5 9B with persistent memory, tool orchestration, policy enforcement, and verification."
+)
+
+from api.mobile_adapter import mobile_router
+app.include_router(mobile_router)
+
+class SubmitTaskRequest(BaseModel):
+    objective: str = Field(..., description="High-level goal or instruction for the agent")
+    approval_token: Optional[str] = None
+    async_execution: bool = False
+
+class ApproveTaskRequest(BaseModel):
+    request_id: str
+    approved: bool
+
+class ChatRequest(BaseModel):
+    message: str
+    include_memory: bool = True
+
+class VoiceQueryRequest(BaseModel):
+    query_text: str
+    auto_speak: bool = True
+
+# Task Endpoints
+@app.post("/api/v1/tasks", response_model=TaskRecord)
+def submit_task(req: SubmitTaskRequest, background_tasks: BackgroundTasks):
+    """Submits a new objective to the agent orchestrator."""
+    if req.async_execution:
+        # Create initial record in db
+        record = task_db.create_task(objective=req.objective)
+        background_tasks.add_task(orchestrator.execute_objective, req.objective, record.task_id, req.approval_token)
+        return record
+    else:
+        # Run synchronously to completion or approval gate
+        return orchestrator.execute_objective(
+            objective=req.objective,
+            approval_token=req.approval_token
+        )
+
+@app.get("/api/v1/tasks", response_model=List[TaskRecord])
+def list_tasks(status: Optional[TaskStatus] = None, limit: int = 50):
+    """Lists recent tasks with optional status filter."""
+    return task_db.list_tasks(status=status, limit=limit)
+
+@app.get("/api/v1/tasks/{task_id}", response_model=TaskRecord)
+def get_task(task_id: str):
+    """Gets complete task details including plan, completed steps, and verifications."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return task
+
+@app.post("/api/v1/tasks/{task_id}/resume", response_model=TaskRecord)
+def resume_task(task_id: str, approval_token: Optional[str] = None):
+    """Resumes an interrupted task or continues after approval."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return orchestrator.resume_task(task_id, approval_token=approval_token)
+
+@app.post("/api/v1/tasks/{task_id}/cancel", response_model=TaskRecord)
+def cancel_task(task_id: str, reason: str = "User cancelled."):
+    """Cancels a pending or running task."""
+    task = task_db.get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"Task '{task_id}' not found.")
+    return orchestrator.cancel_task(task_id, reason=reason)
+
+@app.post("/api/v1/tasks/{task_id}/approve", response_model=TaskRecord)
+def approve_restricted_action(task_id: str, req: ApproveTaskRequest):
+    """Resolves a pending Level 3 approval request."""
+    if req.approved:
+        policy_engine.grant_approval(req.request_id)
+    task_db.resolve_approval(req.request_id, req.approved)
+    
+    # Resume task execution if approved
+    if req.approved:
+        return orchestrator.resume_task(task_id, approval_token=req.request_id)
+    return task_db.get_task(task_id)
+
+@app.get("/api/v1/tasks/{task_id}/traces")
+def get_task_traces(task_id: str):
+    """Returns immutable JSONL execution traces and rolling audit logs for a task."""
+    traces = audit_logger.get_task_trace(task_id)
+    return {"task_id": task_id, "trace_count": len(traces), "events": traces}
+
+# Health & Capabilities
+@app.get("/api/v1/health")
+def health_check():
+    """System health check across LLM, GPU, Memory, and System Resources."""
+    ollama_ok = llm_client.is_healthy()
+    memory_status = memory_adapter.get_status()
+
+    # Hardware stats
+    cpu_percent = psutil.cpu_percent(interval=None)
+    ram = psutil.virtual_memory()
+
+    return {
+        "status": "online" if ollama_ok else "degraded",
+        "system": {
+            "platform": "Windows 11 (HP Victus 15)",
+            "cpu_percent": cpu_percent,
+            "ram_used_gb": round((ram.total - ram.available) / (1024**3), 2),
+            "ram_total_gb": round(ram.total / (1024**3), 2),
+            "ram_percent": ram.percent
+        },
+        "llm": {
+            "endpoint": settings.ollama_api_url,
+            "primary_model": settings.primary_model,
+            "healthy": ollama_ok
+        },
+        "memory_ecosystem": {
+            "total_budget_gb": 33.5,
+            "used_mb": memory_status.get("total_used_mb", 0),
+            "healthy": memory_status.get("healthy", True)
+        },
+        "capabilities": {
+            "registered_tools": len(capability_registry.list_tools()),
+            "discovered_skills": len(skill_registry.list_skills())
+        }
+    }
+
+@app.get("/api/v1/tools")
+def list_capabilities():
+    """Lists all registered tools with their parameter schemas and required permission levels."""
+    return capability_registry.list_tools()
+
+def is_action_objective(text: str) -> bool:
+    """Distinguishes autonomous action objectives from conversational questions."""
+    t = text.strip().lower()
+    if t.startswith(("/execute", "/task", "/run", "/exec", "/do", "task:", "objective:")):
+        return True
+    conversational_starts = (
+        "what is", "what are", "who is", "who are", "how does", "how do",
+        "why is", "why does", "explain", "describe", "tell me about",
+        "can you explain", "summarize", "define", "hello", "hi ", "hey "
+    )
+    if any(t.startswith(s) for s in conversational_starts):
+        action_verbs = ("create a file", "write a file", "delete the file", "run the command", "build the project")
+        if not any(v in t for v in action_verbs):
+            return False
+    action_prefixes = (
+        "create ", "write ", "generate a file", "make a file", "build ", "edit ",
+        "update file", "modify file", "delete ", "remove file", "run command",
+        "execute ", "install ", "verify ", "audit ", "fix ", "refactor "
+    )
+    if any(t.startswith(p) for p in action_prefixes):
+        return True
+    task_indicators = (
+        "and verify", "and check", "and test", "create a text file", "save it to",
+        "write it to disk", "run tests"
+    )
+    return any(ind in t for ind in task_indicators)
+
+# Conversational & Voice Bridge
+@app.post("/api/v1/chat")
+def direct_chat(req: ChatRequest):
+    """Direct conversation with Qwen augmented with personal memory retrieval."""
+    memories = []
+    if req.include_memory:
+        try:
+            memories = memory_adapter.search(req.message, limit=3)
+        except Exception:
+            pass
+
+    mem_context = "\n".join([f"- [{m.get('id')}]: {m.get('snippet')}" for m in memories]) if memories else "None"
+    sys_prompt = f"You are JARVIS, an autonomous local AI coworker on Windows 11.\nRelevant memories:\n{mem_context}"
+    
+    res = llm_client.chat([
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": req.message}
+    ])
+    return {
+        "reply": res["content"],
+        "sources": [m.get("id") for m in memories],
+        "duration_seconds": res.get("duration_seconds")
+    }
+
+@app.post("/api/v1/voice/query")
+def voice_query(req: VoiceQueryRequest):
+    """Voice workstation endpoint compatible with brain_router.py."""
+    if is_action_objective(req.query_text):
+        clean_text = re.sub(r"^/(?:task|execute|exec|do)\s+", "", req.query_text, flags=re.IGNORECASE).strip()
+        task = orchestrator.execute_objective(clean_text)
+        if task.status == TaskStatus.WAITING_FOR_APPROVAL:
+            pending = task_db.get_pending_approvals(task.task_id)
+            appr_reason = pending[0].reason if pending else "Restricted operation"
+            spoken_reply = f"Task {task.task_id} requires human approval: {appr_reason}."
+        elif task.status == TaskStatus.COMPLETED:
+            spoken_reply = f"Task {task.task_id} completed successfully. {task.final_outcome or 'All steps verified on disk.'}"
+        elif task.status == TaskStatus.FAILED:
+            last_err = task.errors[-1] if task.errors else 'Failed verification.'
+            spoken_reply = f"Task {task.task_id} failed: {last_err}"
+        else:
+            spoken_reply = f"Task {task.task_id} is currently in {task.status.value} state."
+
+        return {
+            "ok": True,
+            "brain": "qwen_jarvis_runtime",
+            "reply": spoken_reply,
+            "task_id": task.task_id,
+            "status": task.status.value,
+            "sources": []
+        }
+    else:
+        chat_res = direct_chat(ChatRequest(message=req.query_text, include_memory=True))
+        return {
+            "ok": True,
+            "brain": "qwen_jarvis_runtime",
+            "reply": chat_res["reply"],
+            "sources": chat_res["sources"]
+        }
+
+# Scheduled Tasks Endpoints
+class CreateScheduleRequest(BaseModel):
+    name: str
+    schedule_type: str = Field("interval", description="'interval' or 'one_time'")
+    schedule_expr: str = Field(..., description="Interval seconds or timestamp/delay")
+    objective: str
+    start_delay_seconds: float = 0.0
+    max_runs: Optional[int] = None
+    requires_approval: bool = False
+
+@app.post("/api/v1/schedules")
+def api_create_schedule(req: CreateScheduleRequest):
+    from core.scheduler import persistent_scheduler
+    sched = persistent_scheduler.create_schedule(
+        name=req.name,
+        schedule_type=req.schedule_type,
+        schedule_expr=req.schedule_expr,
+        objective=req.objective,
+        start_delay_seconds=req.start_delay_seconds,
+        max_runs=req.max_runs,
+        requires_approval=req.requires_approval
+    )
+    return sched
+
+@app.get("/api/v1/schedules")
+def api_list_schedules(status: Optional[str] = None):
+    from core.scheduler import persistent_scheduler
+    return persistent_scheduler.list_schedules(status=status)
+
+@app.get("/api/v1/schedules/{schedule_id}")
+def api_get_schedule(schedule_id: str):
+    from core.scheduler import persistent_scheduler
+    s = persistent_scheduler.get_schedule(schedule_id)
+    if not s:
+        raise HTTPException(status_code=404, detail=f"Schedule '{schedule_id}' not found.")
+    return s
+
+@app.post("/api/v1/schedules/{schedule_id}/pause")
+def api_pause_schedule(schedule_id: str):
+    from core.scheduler import persistent_scheduler
+    ok = persistent_scheduler.pause_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not pause schedule.")
+    return {"ok": True, "schedule_id": schedule_id, "status": "paused"}
+
+@app.post("/api/v1/schedules/{schedule_id}/resume")
+def api_resume_schedule(schedule_id: str):
+    from core.scheduler import persistent_scheduler
+    ok = persistent_scheduler.resume_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not resume schedule.")
+    return {"ok": True, "schedule_id": schedule_id, "status": "active"}
+
+@app.post("/api/v1/schedules/{schedule_id}/cancel")
+def api_cancel_schedule(schedule_id: str):
+    from core.scheduler import persistent_scheduler
+    ok = persistent_scheduler.cancel_schedule(schedule_id)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Could not cancel schedule.")
+    return {"ok": True, "schedule_id": schedule_id, "status": "cancelled"}
+
+@app.post("/api/v1/schedules/{schedule_id}/run_now")
+def api_run_schedule_now(schedule_id: str):
+    from core.scheduler import persistent_scheduler
+    res = persistent_scheduler.run_now(schedule_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Execution failed."))
+    return res
+
+@app.get("/api/v1/schedules/{schedule_id}/history")
+def api_get_schedule_history(schedule_id: str, limit: int = 20):
+    from core.scheduler import persistent_scheduler
+    return persistent_scheduler.get_history(schedule_id, limit=limit)
+
+# Email Integration Endpoints
+class CreateDraftRequest(BaseModel):
+    recipient: str
+    subject: str
+    body: str
+    in_reply_to: Optional[str] = None
+
+class SendEmailRequest(BaseModel):
+    recipient: str
+    subject: str
+    body: str
+    draft_id: Optional[str] = None
+    approval_token: Optional[str] = None
+
+@app.get("/api/v1/email/search")
+def api_search_emails(query: str, category: Optional[str] = None, unread_only: bool = False, limit: int = 10):
+    from registry.email_adapter import email_adapter
+    return email_adapter.search_emails(query=query, category=category, unread_only=unread_only, limit=limit)
+
+@app.get("/api/v1/email/drafts")
+def api_list_drafts():
+    from registry.email_adapter import email_adapter
+    return email_adapter.list_drafts()
+
+@app.post("/api/v1/email/drafts")
+def api_create_draft(req: CreateDraftRequest):
+    from registry.email_adapter import email_adapter
+    return email_adapter.create_draft(recipient=req.recipient, subject=req.subject, body=req.body, in_reply_to=req.in_reply_to)
+
+@app.get("/api/v1/email/{email_id}")
+def api_read_email(email_id: str):
+    from registry.email_adapter import email_adapter
+    em = email_adapter.read_email(email_id)
+    if not em:
+        raise HTTPException(status_code=404, detail=f"Email '{email_id}' not found.")
+    return em
+
+@app.post("/api/v1/email/{email_id}/classify")
+def api_classify_email(email_id: str):
+    from registry.email_adapter import email_adapter
+    return email_adapter.classify_email(email_id)
+
+@app.get("/api/v1/email/threads/{thread_id}/summary")
+def api_summarize_thread(thread_id: str):
+    from registry.email_adapter import email_adapter
+    res = email_adapter.summarize_thread(thread_id)
+    if not res.get("ok"):
+        raise HTTPException(status_code=404, detail=res.get("error"))
+    return res
+
+@app.post("/api/v1/email/send")
+def api_send_email(req: SendEmailRequest):
+    from registry.email_adapter import email_adapter
+    try:
+        return email_adapter.send_email(
+            recipient=req.recipient,
+            subject=req.subject,
+            body=req.body,
+            draft_id=req.draft_id,
+            approval_token=req.approval_token
+        )
+    except ApprovalRequiredError as are:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Sending email is a Level 3 Restricted action requiring explicit user approval.",
+                "approval_request": are.approval_request.dict()
+            }
+        )
+
+# Calendar Integration Endpoints
+class CreateCalendarEventRequest(BaseModel):
+    title: str
+    start_time: str
+    end_time: str
+    description: str = ""
+    location: str = ""
+    attendees: Optional[List[str]] = None
+    reminder_minutes: int = 15
+
+class CancelCalendarEventRequest(BaseModel):
+    approval_token: Optional[str] = None
+
+@app.get("/api/v1/calendar/events")
+def api_get_calendar_events(start_date: Optional[str] = None, end_date: Optional[str] = None, status: str = "confirmed"):
+    from registry.calendar_adapter import calendar_adapter
+    return calendar_adapter.get_events(start_date=start_date, end_date=end_date, status=status)
+
+@app.get("/api/v1/calendar/availability")
+def api_check_availability(start_time: str, end_time: str):
+    from registry.calendar_adapter import calendar_adapter
+    return calendar_adapter.check_availability(start_time=start_time, end_time=end_time)
+
+@app.get("/api/v1/calendar/suggestions")
+def api_suggest_calendar_slots(duration_minutes: int = 60, day_date: Optional[str] = None):
+    from registry.calendar_adapter import calendar_adapter
+    return calendar_adapter.suggest_slots(duration_minutes=duration_minutes, day_date=day_date)
+
+@app.post("/api/v1/calendar/events")
+def api_create_calendar_event(req: CreateCalendarEventRequest):
+    from registry.calendar_adapter import calendar_adapter
+    res = calendar_adapter.create_event(
+        title=req.title,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        description=req.description,
+        location=req.location,
+        attendees=req.attendees,
+        reminder_minutes=req.reminder_minutes
+    )
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error", "Failed to create event."))
+    return res
+
+@app.post("/api/v1/calendar/events/{event_id}/cancel")
+def api_cancel_calendar_event(event_id: str, req: CancelCalendarEventRequest):
+    from registry.calendar_adapter import calendar_adapter
+    try:
+        res = calendar_adapter.cancel_event(event_id=event_id, approval_token=req.approval_token)
+        if not res.get("ok"):
+            raise HTTPException(status_code=400, detail=res.get("error"))
+        return res
+    except ApprovalRequiredError as are:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Cancelling calendar event is a Level 3 Restricted action requiring explicit user approval.",
+                "approval_request": are.approval_request.dict()
+            }
+        )
+
+# Document Intelligence Endpoints
+class IngestDocumentRequest(BaseModel):
+    file_path: str
+    force_reindex: bool = False
+
+@app.post("/api/v1/documents/ingest")
+def api_ingest_document(req: IngestDocumentRequest):
+    from core.doc_intelligence import doc_intelligence
+    res = doc_intelligence.ingest_document(file_path=Path(req.file_path), force_reindex=req.force_reindex)
+    if not res.get("ok"):
+        raise HTTPException(status_code=400, detail=res.get("error"))
+    return res
+
+@app.get("/api/v1/documents/search")
+def api_search_documents(query: str, limit: int = 5, doc_id: Optional[str] = None):
+    from core.doc_intelligence import doc_intelligence
+    return doc_intelligence.search_documents(query=query, limit=limit, doc_id=doc_id)
+
+@app.get("/api/v1/documents")
+def api_list_documents():
+    from core.doc_intelligence import doc_intelligence
+    return doc_intelligence.list_documents()
+
+@app.delete("/api/v1/documents/{doc_id}")
+def api_delete_document(doc_id: str):
+    from core.doc_intelligence import doc_intelligence
+    ok = doc_intelligence.delete_document(doc_id)
+    if not ok:
+        raise HTTPException(status_code=404, detail=f"Document '{doc_id}' not found.")
+    return {"ok": True, "doc_id": doc_id, "status": "deleted"}
+
+# --- RAG and Memory Evaluation Endpoints ---
+
+@app.get("/api/v1/rag/evaluate")
+def api_rag_evaluate():
+    from evaluation.rag_evaluator import rag_evaluator
+    return rag_evaluator.generate_full_evaluation_report()
+
+@app.get("/api/v1/rag/report")
+def api_rag_report():
+    from fastapi.responses import PlainTextResponse
+    from evaluation.rag_evaluator import rag_evaluator
+    return PlainTextResponse(rag_evaluator.generate_markdown_report(), media_type="text/markdown")
+
+# --- Security & Emergency Stop Endpoints ---
+
+class EmergencyStopRequest(BaseModel):
+    action: str = Field(..., description="'trigger' or 'reset'")
+    reason: Optional[str] = "Manual operator intervention from Dashboard"
+
+@app.post("/api/v1/security/emergency_stop")
+def api_emergency_stop(req: EmergencyStopRequest):
+    if req.action.lower() == "trigger":
+        policy_engine.trigger_emergency_stop()
+        return {"ok": True, "emergency_stopped": True, "message": f"Emergency stop triggered: {req.reason}"}
+    elif req.action.lower() == "reset":
+        policy_engine.reset_emergency_stop()
+        return {"ok": True, "emergency_stopped": False, "message": "Emergency stop reset. System online."}
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action. Must be 'trigger' or 'reset'.")
+
+# --- Unified Local Dashboard Summary Endpoint ---
+
+@app.get("/api/v1/dashboard/summary")
+def api_dashboard_summary():
+    """Aggregated status payload for the unified local dashboard."""
+    # 1. System stats
+    ram = psutil.virtual_memory()
+    system_stats = {
+        "platform": "Windows 11 Home 64-bit",
+        "workstation": "HP Victus 15-fa2382TX",
+        "cpu": "Intel Core 5 210H (12 Logical Cores)",
+        "cpu_percent": psutil.cpu_percent(interval=None),
+        "ram_used_gb": round((ram.total - ram.available) / (1024**3), 2),
+        "ram_total_gb": round(ram.total / (1024**3), 2),
+        "ram_percent": ram.percent,
+        "gpu": "NVIDIA GeForce RTX 4050 6GB Laptop GPU",
+        "vram_allocated_gb": 4.3,
+        "vram_total_gb": 6.0
+    }
+
+    # 2. LLM and Models
+    from core.model_router import model_router
+    ollama_ok = llm_client.is_healthy()
+    llm_stats = {
+        "ollama_endpoint": settings.ollama_api_url,
+        "ollama_healthy": ollama_ok,
+        "active_models": [
+            {"id": "qwen-batman:latest", "role": "Batman Persona & Local Coworker", "tier": "local_qwen_batman", "status": "resident"},
+            {"id": "qwen-text:latest", "role": "General & Technical Text Tasks", "tier": "local_qwen_text", "status": "available"},
+            {"id": "qwen3.5:9b", "role": "General Assistant Engine", "tier": "local_qwen_assistant", "status": "available"}
+        ],
+        "usage": model_router.usage_tracker.get_summary()
+    }
+
+    # 3. Agents
+    agent_tool = capability_registry.get_tool("agent_list")
+    agents_data = agent_tool.handler() if agent_tool else {"agents": []}
+
+    # 4. Capability Registry
+    all_tools = capability_registry.list_tools()
+    tools_by_level = {"LEVEL_1_SAFE": 0, "LEVEL_2_CONTROLLED": 0, "LEVEL_3_RESTRICTED": 0}
+    for t in all_tools:
+        lvl = t.get("permission_level", "LEVEL_1_SAFE")
+        tools_by_level[lvl] = tools_by_level.get(lvl, 0) + 1
+
+    # 5. Persistent Schedules
+    from core.scheduler import persistent_scheduler
+    schedules = persistent_scheduler.list_schedules()
+
+    # 6. Memory & Documents
+    from core.doc_intelligence import doc_intelligence
+    docs = doc_intelligence.list_documents()
+    total_chunks = sum(d.get("total_chunks", 0) for d in docs)
+    memory_count = memory_adapter.get_status().get("total_records", 1101)
+
+    # 7. Email & Calendar
+    from registry.email_adapter import email_adapter
+    from registry.calendar_adapter import calendar_adapter
+    emails = email_adapter.search_emails(query="", limit=5)
+    events = calendar_adapter.get_events()
+
+    # 8. Security & Pending Approvals
+    pending_tasks = task_db.list_tasks(status=TaskStatus.WAITING_FOR_APPROVAL)
+    recent_tasks = task_db.list_tasks(limit=10)
+
+    is_stopped = policy_engine.is_emergency_stopped()
+    overall_status = "emergency_stopped" if is_stopped else ("online" if ollama_ok else "degraded")
+
+    return {
+        "status": overall_status,
+        "emergency_stopped": is_stopped,
+        "timestamp": time.time(),
+        "system": system_stats,
+        "llm": llm_stats,
+        "agents": agents_data.get("agents", []),
+        "capabilities": {
+            "total_tools": len(all_tools),
+            "by_level": tools_by_level,
+            "tools": all_tools
+        },
+        "schedules": {
+            "total": len(schedules),
+            "items": schedules
+        },
+        "knowledge": {
+            "memory_nodes": memory_count,
+            "indexed_documents": len(docs),
+            "indexed_chunks": total_chunks,
+            "documents": docs
+        },
+        "communications": {
+            "email_connected": True,
+            "total_emails": len(email_adapter.search_emails(limit=100)),
+            "recent_emails": emails,
+            "calendar_connected": True,
+            "total_events": len(events),
+            "upcoming_events": events[:5]
+        },
+        "security": {
+            "pending_approvals": len(pending_tasks),
+            "pending_tasks": [
+                {"task_id": t.task_id, "objective": t.objective, "created_at": t.created_at}
+                for t in pending_tasks
+            ],
+            "recent_tasks": [
+                {"task_id": t.task_id, "objective": t.objective, "status": t.status.value, "created_at": t.created_at}
+                for t in recent_tasks
+            ]
+        }
+    }
+
+# --- Dashboard Static Files & Root Redirect ---
+
+DASHBOARD_DIR = Path(__file__).resolve().parent.parent / "static" / "dashboard"
+if DASHBOARD_DIR.exists():
+    app.mount("/dashboard", StaticFiles(directory=str(DASHBOARD_DIR), html=True), name="dashboard")
+
+PWA_DIR = Path(__file__).resolve().parent.parent / "static" / "pwa"
+if PWA_DIR.exists():
+    app.mount("/pwa", StaticFiles(directory=str(PWA_DIR), html=True), name="pwa")
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    return RedirectResponse(url="/dashboard/")
+
+
+
+
+
+

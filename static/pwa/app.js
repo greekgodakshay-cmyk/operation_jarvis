@@ -1,0 +1,847 @@
+// Operation JARVIS — Android Remote PWA & Document Intelligence Controller
+
+let sessionToken = localStorage.getItem("jarvis_mobile_token") || null;
+let speechRecognizer = null;
+let currentTranscript = "";
+let isRecording = false;
+
+// Document Intelligence State
+let stagedFiles = [];
+let activeDocument = null; // { id: string, name: string, isAll: boolean }
+let chatHistory = [];
+let isVoiceOutputEnabled = localStorage.getItem("jarvis_voice_output_enabled") === "true";
+let currentPlayingAudioUrl = null;
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Purge any legacy service worker caches on startup
+  if ("caches" in window) {
+    caches.keys().then(keys => {
+      keys.forEach(k => {
+        if (k !== "jarvis-pwa-v3") {
+          console.log("[PWA] Purging obsolete cache:", k);
+          caches.delete(k);
+        }
+      });
+    });
+  }
+
+  registerServiceWorker();
+  initSpeechRecognition();
+  updateVoiceToggleUI();
+  checkAuthAndConnect();
+  setInterval(checkStatus, 5000);
+});
+
+function registerServiceWorker() {
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("/pwa/service-worker.js?v=20261107_v3")
+      .then(reg => {
+        console.log("JARVIS PWA ServiceWorker v2 registered");
+        if (reg) {
+          reg.update();
+          reg.addEventListener("updatefound", () => {
+            const newWorker = reg.installing;
+            if (newWorker) {
+              newWorker.addEventListener("statechange", () => {
+                if (newWorker.state === "activated") {
+                  console.log("ServiceWorker v2 activated. Reloading to apply fresh assets.");
+                  window.location.reload();
+                }
+              });
+            }
+          });
+        }
+      })
+      .catch(err => console.warn("ServiceWorker registration failed:", err));
+  }
+}
+
+function checkAuthAndConnect() {
+  if (!sessionToken) {
+    document.getElementById("pairingScreen").style.display = "flex";
+    document.getElementById("mainView").style.display = "none";
+  } else {
+    document.getElementById("pairingScreen").style.display = "none";
+    document.getElementById("mainView").style.display = "flex";
+    checkStatus();
+    fetchDocumentCount();
+  }
+}
+
+async function pairDevice() {
+  const key = document.getElementById("inputPairingKey").value.trim();
+  if (!key) return;
+
+  try {
+    const res = await fetch("/api/v1/mobile/auth/pair", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pairing_key: key })
+    });
+    if (!res.ok) throw new Error("Invalid pairing key");
+    const data = await res.json();
+    sessionToken = data.session_token;
+    localStorage.setItem("jarvis_mobile_token", sessionToken);
+    checkAuthAndConnect();
+  } catch (err) {
+    alert(`Pairing failed: ${err.message}`);
+  }
+}
+
+async function checkStatus() {
+  if (!sessionToken) return;
+
+  try {
+    const res = await fetch("/api/v1/mobile/status", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    if (res.status === 401) {
+      sessionToken = null;
+      localStorage.removeItem("jarvis_mobile_token");
+      checkAuthAndConnect();
+      return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    document.getElementById("offlineNotice").style.display = "none";
+    const dot = document.getElementById("statusDot");
+    dot.className = data.status === "online" ? "status-dot online" : "status-dot offline";
+
+    // Pending approvals banner
+    const banner = document.getElementById("pendingApprovalsBanner");
+    if (data.pending_approvals_count > 0) {
+      banner.style.display = "flex";
+      document.getElementById("pendingCount").textContent = data.pending_approvals_count;
+    } else {
+      banner.style.display = "none";
+    }
+
+    // Update document badge
+    if (typeof data.indexed_documents_count !== "undefined") {
+      updateDocCountBadge(data.indexed_documents_count);
+    }
+  } catch (err) {
+    console.warn("Workstation ping failed:", err);
+    document.getElementById("offlineNotice").style.display = "block";
+    document.getElementById("statusDot").className = "status-dot offline";
+  }
+}
+
+function updateDocCountBadge(count) {
+  const badge = document.getElementById("docCountBadge");
+  if (badge) {
+    badge.textContent = count;
+    badge.style.display = count > 0 ? "inline-block" : "none";
+  }
+  const libBadge = document.getElementById("docLibCount");
+  if (libBadge) {
+    libBadge.textContent = `${count} Docs`;
+  }
+}
+
+async function fetchDocumentCount() {
+  if (!sessionToken) return;
+  try {
+    const res = await fetch("/api/v1/mobile/documents", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    if (res.ok) {
+      const data = await res.json();
+      updateDocCountBadge(data.count || 0);
+    }
+  } catch (e) {
+    console.warn("Failed to fetch doc count:", e);
+  }
+}
+
+// --- Native Speech Recognition ---
+
+function initSpeechRecognition() {
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (SpeechRec) {
+    speechRecognizer = new SpeechRec();
+    speechRecognizer.continuous = false;
+    speechRecognizer.interimResults = true;
+    speechRecognizer.lang = "en-US";
+
+    speechRecognizer.onresult = event => {
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; ++i) {
+        if (event.results[i].isFinal) {
+          currentTranscript += event.results[i][0].transcript;
+        } else {
+          interim += event.results[i][0].transcript;
+        }
+      }
+      if (interim) {
+        document.getElementById("pttStatus").textContent = `"${interim.slice(-25)}"`;
+      }
+    };
+
+    speechRecognizer.onerror = event => {
+      console.warn("Speech recognition error:", event.error);
+    };
+
+    speechRecognizer.onend = () => {
+      if (isRecording) {
+        dispatchVoiceQuery(currentTranscript);
+        isRecording = false;
+        resetPttButton();
+      }
+    };
+  }
+}
+
+function startPtt(event) {
+  if (event) event.preventDefault();
+  if (isRecording) return;
+  isRecording = true;
+  currentTranscript = "";
+
+  const btn = document.getElementById("btnPtt");
+  btn.classList.add("active");
+  document.getElementById("pttStatus").textContent = "LISTENING...";
+
+  if (navigator.vibrate) navigator.vibrate(40);
+
+  if (speechRecognizer) {
+    try {
+      speechRecognizer.start();
+    } catch (e) {
+      console.warn("Recognizer already started");
+    }
+  }
+}
+
+function stopPtt(event) {
+  if (event) event.preventDefault();
+  if (!isRecording) return;
+
+  const btn = document.getElementById("btnPtt");
+  btn.classList.remove("active");
+  document.getElementById("pttStatus").textContent = "TRANSMITTING...";
+
+  if (navigator.vibrate) navigator.vibrate(30);
+
+  if (speechRecognizer) {
+    try {
+      speechRecognizer.stop();
+    } catch (e) {}
+  } else {
+    isRecording = false;
+    resetPttButton();
+    const promptText = prompt("Web Speech API not supported. Enter instruction for JARVIS:");
+    if (promptText) dispatchVoiceQuery(promptText);
+  }
+}
+
+function resetPttButton() {
+  document.getElementById("btnPtt").classList.remove("active");
+  document.getElementById("pttStatus").textContent = "HOLD TO TALK";
+}
+
+async function dispatchVoiceQuery(text) {
+  const clean = text.trim();
+  if (!clean) {
+    resetPttButton();
+    return;
+  }
+
+  appendChatMessage("user", clean);
+  document.getElementById("pttStatus").textContent = "JARVIS REASONING...";
+
+  const payload = {
+    transcript: clean,
+    auto_speak: true,
+    voice: "bm_george"
+  };
+
+  if (activeDocument) {
+    if (activeDocument.isAll) {
+      payload.ground_with_documents = true;
+    } else {
+      payload.doc_id = activeDocument.id;
+    }
+  }
+
+  try {
+    const res = await fetch("/api/v1/mobile/voice", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    appendChatMessage("jarvis", data.response_text, {
+      model_used: data.model_used,
+      is_cloud: data.is_cloud,
+      latency_ms: data.latency_ms,
+      citations: data.citations,
+      token_usage: data.token_usage,
+      routing_reason: data.routing_reason
+    });
+
+    if (data.audio_url) {
+      playAudioResponse(`${data.audio_url}?token=${sessionToken}`);
+    }
+  } catch (err) {
+    appendChatMessage("jarvis", `Connection error: ${err.message}. Verify laptop is on.`);
+  } finally {
+    resetPttButton();
+  }
+}
+
+function updateVoiceToggleUI() {
+  const btn = document.getElementById("btnVoiceToggle");
+  const iconOn = document.getElementById("iconVoiceOn");
+  const iconOff = document.getElementById("iconVoiceOff");
+  if (!btn) return;
+  if (isVoiceOutputEnabled) {
+    btn.classList.add("active");
+    btn.title = "Voice Output: ENABLED (Click to mute)";
+    if (iconOn) iconOn.style.display = "block";
+    if (iconOff) iconOff.style.display = "none";
+  } else {
+    btn.classList.remove("active");
+    btn.title = "Voice Output: MUTED (Click to enable)";
+    if (iconOn) iconOn.style.display = "none";
+    if (iconOff) iconOff.style.display = "block";
+  }
+}
+
+function toggleVoiceOutput() {
+  isVoiceOutputEnabled = !isVoiceOutputEnabled;
+  localStorage.setItem("jarvis_voice_output_enabled", isVoiceOutputEnabled ? "true" : "false");
+  updateVoiceToggleUI();
+  // If user muted while audio is playing, stop immediately
+  if (!isVoiceOutputEnabled) {
+    const player = document.getElementById("audioPlayer");
+    if (player) {
+      try {
+        player.pause();
+        player.currentTime = 0;
+      } catch (e) {}
+    }
+    currentPlayingAudioUrl = null;
+  }
+}
+
+function playAudioResponse(url) {
+  if (!url) return;
+  const player = document.getElementById("audioPlayer");
+  if (!player) return;
+
+  // Prevent duplicate playback of identical audio url
+  if (currentPlayingAudioUrl === url && !player.paused) {
+    return;
+  }
+
+  // Prevent overlapping playback: stop any currently active speech
+  try {
+    player.pause();
+    player.currentTime = 0;
+  } catch (e) {}
+
+  currentPlayingAudioUrl = url;
+  player.src = url;
+  player.play().catch(e => console.warn("Autoplay prevented:", e));
+
+  player.onended = () => {
+    currentPlayingAudioUrl = null;
+  };
+  player.onerror = () => {
+    currentPlayingAudioUrl = null;
+  };
+}
+
+// --- Text Chat & Intelligence Flow ---
+
+function handleInputKey(event) {
+  if (event.key === "Enter") {
+    sendTextMessage();
+  }
+}
+
+function sendQuickPrompt(promptText) {
+  document.getElementById("inputTextFallback").value = promptText;
+  sendTextMessage();
+}
+
+async function sendTextMessage() {
+  const input = document.getElementById("inputTextFallback");
+  const val = input.value.trim();
+  if (!val) return;
+  input.value = "";
+
+  appendChatMessage("user", val);
+  chatHistory.push({ role: "user", content: val });
+
+  const payload = {
+    message: val,
+    history: chatHistory.slice(-4),
+    prefer_local: true,
+    auto_speak: isVoiceOutputEnabled
+  };
+
+  if (activeDocument) {
+    if (activeDocument.isAll) {
+      payload.ground_with_documents = true;
+    } else {
+      payload.doc_id = activeDocument.id;
+    }
+  }
+
+  try {
+    const res = await fetch("/api/v1/mobile/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify(payload)
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    appendChatMessage("jarvis", data.reply, {
+      model_used: data.model_used,
+      is_cloud: data.is_cloud,
+      latency_ms: data.latency_ms,
+      citations: data.citations,
+      token_usage: data.token_usage,
+      task_id: data.task_id,
+      routing_reason: data.routing_reason
+    });
+    chatHistory.push({ role: "assistant", content: data.reply });
+
+    // Speak response if voice output is enabled and audio_url returned
+    if (isVoiceOutputEnabled && data.audio_url) {
+      playAudioResponse(`${data.audio_url}?token=${encodeURIComponent(sessionToken)}`);
+    }
+  } catch (err) {
+    let errMsg = err.message;
+    if (errMsg.includes("Failed to fetch")) {
+      errMsg = "Workstation connection dropped or inference timed out. Verify Tailscale and host power.";
+    }
+    appendChatMessage("jarvis", `Inference error: ${errMsg}`);
+  }
+}
+
+function appendChatMessage(sender, text, meta = null) {
+  const feed = document.getElementById("chatFeed");
+  const msgDiv = document.createElement("div");
+  msgDiv.className = `chat-msg ${sender === 'user' ? 'user-msg' : 'jarvis-msg'}`;
+
+  const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  
+  let metaHtml = "";
+  let citationsHtml = "";
+
+  if (sender === "jarvis" && meta) {
+    const tierClass = meta.is_cloud ? "cloud" : "local";
+    const tierName = meta.model_used ? meta.model_used.toUpperCase() : "LOCAL QWEN";
+    const reasonTitle = meta.routing_reason ? `Routing: ${escapeHtml(meta.routing_reason)}` : "";
+    const latStr = meta.latency_ms ? ` · ${meta.latency_ms}ms` : "";
+    const tokStr = meta.token_usage && meta.token_usage.completion_tokens ? ` · ${meta.token_usage.completion_tokens} tok` : "";
+
+    metaHtml = `
+      <div class="msg-meta-row">
+        <span class="telemetry-badge ${tierClass}" title="${reasonTitle}">
+          ⚡ ${escapeHtml(tierName)}${latStr}${tokStr}
+        </span>
+        <span class="msg-time">${timeStr}</span>
+      </div>
+    `;
+
+    if (meta.citations && meta.citations.length > 0) {
+      const chips = meta.citations.map(c => `
+        <span class="citation-chip" title="${escapeHtml(c.snippet || '')}" onclick="showCitationSnippet('${escapeHtml(c.filename)}', ${c.page_number}, '${escapeHtml(c.snippet || '')}')">
+          📄 ${escapeHtml(c.filename)} (P.${c.page_number})
+        </span>
+      `).join("");
+      citationsHtml = `
+        <div class="citations-container">
+          <div class="citations-header">Source Citations:</div>
+          <div class="citation-list">${chips}</div>
+        </div>
+      `;
+    }
+  } else {
+    metaHtml = `<span class="msg-time">${timeStr}</span>`;
+  }
+
+  // Convert simple markdown line breaks and bold to HTML safely
+  const formattedText = formatChatMessage(text);
+
+  msgDiv.innerHTML = `
+    <div class="msg-bubble">${formattedText}${citationsHtml}</div>
+    ${metaHtml}
+  `;
+  feed.appendChild(msgDiv);
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function formatChatMessage(text) {
+  if (!text) return "";
+  let s = escapeHtml(text);
+  // Bold **text**
+  s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+  // Newlines
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+function showCitationSnippet(filename, page, snippet) {
+  if (!snippet) return;
+  alert(`Source Citation: ${filename}\nPage: ${page}\n\nExcerpt:\n"${snippet}"`);
+}
+
+// --- Android Document Upload & Picker Workflow ---
+
+function triggerFilePicker() {
+  document.getElementById("filePicker").click();
+}
+
+function triggerFilePickerFromModal() {
+  closeDocsModal();
+  triggerFilePicker();
+}
+
+function handleFilesSelected(event) {
+  const files = event.target.files;
+  if (!files || files.length === 0) return;
+
+  const allowedExts = [".pdf", ".docx", ".pptx", ".txt"];
+  const maxBytes = 25 * 1024 * 1024; // 25MB
+
+  for (let i = 0; i < files.length; i++) {
+    const f = files[i];
+    const nameLower = f.name.toLowerCase();
+    const isSupported = allowedExts.some(ext => nameLower.endsWith(ext));
+    if (!isSupported) {
+      alert(`Unsupported file type: ${f.name}\nAllowed: PDF, DOCX, PPTX, TXT.`);
+      continue;
+    }
+    if (f.size > maxBytes) {
+      alert(`File too large: ${f.name} (${(f.size/(1024*1024)).toFixed(1)}MB)\nMax limit: 25MB.`);
+      continue;
+    }
+    // Avoid duplicate in staged
+    if (!stagedFiles.some(st => st.name === f.name && st.size === f.size)) {
+      stagedFiles.push(f);
+    }
+  }
+
+  renderStagedFiles();
+  event.target.value = ""; // Reset picker
+}
+
+function renderStagedFiles() {
+  const tray = document.getElementById("uploadStagingTray");
+  const list = document.getElementById("stagedFilesList");
+  const countSpan = document.getElementById("stagedCount");
+
+  if (stagedFiles.length === 0) {
+    tray.style.display = "none";
+    return;
+  }
+
+  countSpan.textContent = stagedFiles.length;
+  list.innerHTML = stagedFiles.map((f, idx) => {
+    const ext = f.name.split('.').pop().toUpperCase();
+    const sizeStr = (f.size < 1024)
+      ? `${f.size} B`
+      : (f.size < 1024 * 1024) 
+        ? `${(f.size / 1024).toFixed(1)} KB` 
+        : `${(f.size / (1024 * 1024)).toFixed(1)} MB`;
+
+    return `
+      <div class="staged-file-item">
+        <div class="staged-file-meta">
+          <span class="file-type-pill">${ext}</span>
+          <span class="staged-file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+          <span class="staged-file-size">(${sizeStr})</span>
+        </div>
+        <button class="staged-remove-btn" onclick="removeStagedFile(${idx})" title="Remove file">&times;</button>
+      </div>
+    `;
+  }).join("");
+
+  tray.style.display = "flex";
+}
+
+function removeStagedFile(index) {
+  stagedFiles.splice(index, 1);
+  renderStagedFiles();
+}
+
+function clearStagedFiles() {
+  stagedFiles = [];
+  renderStagedFiles();
+}
+
+async function uploadStagedFiles() {
+  if (stagedFiles.length === 0) return;
+
+  const btnSubmit = document.getElementById("btnUploadSubmit");
+  const progressBox = document.getElementById("uploadProgressContainer");
+  const progressText = document.getElementById("uploadProgressText");
+
+  btnSubmit.disabled = true;
+  progressBox.style.display = "flex";
+  progressText.textContent = `Uploading and indexing ${stagedFiles.length} document(s)...`;
+
+  const formData = new FormData();
+  stagedFiles.forEach(f => {
+    formData.append("files", f);
+  });
+  formData.append("force_reindex", "false");
+
+  try {
+    const res = await fetch("/api/v1/mobile/documents/upload", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: formData
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.detail || `HTTP ${res.status}`);
+    }
+
+    const successCount = data.successful_count || 0;
+    const failCount = data.failed_count || 0;
+
+    if (successCount > 0) {
+      const firstDoc = data.indexed_documents[0];
+      selectActiveDocument(firstDoc.doc_id, firstDoc.filename || firstDoc.original_filename);
+
+      appendChatMessage("jarvis", `Successfully indexed ${successCount} document(s) with SQLite FTS5. You can now ask questions, request summaries, or generate exam preparation questions about ${firstDoc.filename || 'your document'}.`);
+      fetchDocumentCount();
+    }
+
+    if (failCount > 0 && data.errors) {
+      const errMsgs = data.errors.map(e => `• ${e.filename}: ${e.error}`).join("\n");
+      alert(`Some files could not be indexed:\n${errMsgs}`);
+    }
+
+    clearStagedFiles();
+  } catch (err) {
+    let msg = err.message;
+    if (msg.includes("Failed to fetch")) {
+      msg = "Network connection interrupted during upload. Verify Tailscale mesh to workstation.";
+    }
+    alert(`Upload failed: ${msg}`);
+  } finally {
+    btnSubmit.disabled = false;
+    progressBox.style.display = "none";
+  }
+}
+
+// --- Document Library Modal & Context Management ---
+
+function openDocsModal() {
+  document.getElementById("docsModal").style.display = "flex";
+  fetchAndRenderDocuments();
+}
+
+function closeDocsModal() {
+  document.getElementById("docsModal").style.display = "none";
+}
+
+async function fetchAndRenderDocuments() {
+  const body = document.getElementById("modalDocsList");
+  body.innerHTML = '<p class="text-muted">Loading documents from workstation...</p>';
+
+  try {
+    const res = await fetch("/api/v1/mobile/documents", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    const docs = data.documents || [];
+    updateDocCountBadge(docs.length);
+
+    if (docs.length === 0) {
+      body.innerHTML = `
+        <div style="text-align:center; padding:20px; color:#94a3b8;">
+          <p>No documents indexed yet.</p>
+          <p style="font-size:12px; margin-top:6px;">Attach PDF, DOCX, PPTX, or TXT to get started.</p>
+        </div>
+      `;
+      return;
+    }
+
+    body.innerHTML = docs.map(d => {
+      const sizeStr = (d.file_size_bytes < 1024)
+        ? `${d.file_size_bytes} B`
+        : (d.file_size_bytes < 1024 * 1024)
+          ? `${(d.file_size_bytes / 1024).toFixed(1)} KB`
+          : `${(d.file_size_bytes / (1024 * 1024)).toFixed(1)} MB`;
+
+      const typeUpper = (d.file_type || 'TXT').toUpperCase();
+      const isSelected = activeDocument && activeDocument.id === d.doc_id;
+
+      return `
+        <div class="doc-card" style="${isSelected ? 'border-color: var(--accent);' : ''}">
+          <div class="doc-card-header">
+            <div class="doc-card-title-row">
+              <span class="file-type-pill">${typeUpper}</span>
+              <span class="doc-card-title" title="${escapeHtml(d.filename)}">${escapeHtml(d.filename)}</span>
+            </div>
+          </div>
+          <div class="doc-card-meta">
+            <span>Pages: ${d.total_pages || 1}</span>
+            <span>Chunks: ${d.total_chunks || 1}</span>
+            <span>Size: ${sizeStr}</span>
+          </div>
+          <div class="doc-card-actions">
+            <button class="btn-doc-chat" onclick="selectActiveDocument('${d.doc_id}', '${escapeHtml(d.filename)}')">
+              ${isSelected ? '✓ Active Context' : 'Select for Chat'}
+            </button>
+            <button class="btn-doc-delete" onclick="deleteDocument('${d.doc_id}', '${escapeHtml(d.filename)}')">
+              Delete
+            </button>
+          </div>
+        </div>
+      `;
+    }).join("");
+  } catch (err) {
+    body.innerHTML = `<p style="color:var(--danger)">Error: ${err.message}</p>`;
+  }
+}
+
+function selectActiveDocument(docId, filename) {
+  activeDocument = { id: docId, name: filename, isAll: false };
+  updateActiveDocumentUI();
+  closeDocsModal();
+}
+
+function selectContextAllDocs() {
+  activeDocument = { id: null, name: "All Indexed Documents", isAll: true };
+  updateActiveDocumentUI();
+  closeDocsModal();
+}
+
+function clearActiveDocument() {
+  activeDocument = null;
+  updateActiveDocumentUI();
+}
+
+function updateActiveDocumentUI() {
+  const bar = document.getElementById("activeDocBar");
+  const label = document.getElementById("activeDocLabel");
+
+  if (activeDocument) {
+    label.textContent = `Grounding: ${activeDocument.name}`;
+    bar.style.display = "flex";
+  } else {
+    bar.style.display = "none";
+  }
+}
+
+async function deleteDocument(docId, filename) {
+  if (!confirm(`Delete document "${filename}" and its indexed chunks?`)) return;
+
+  try {
+    const res = await fetch(`/api/v1/mobile/documents/${docId}`, {
+      method: "DELETE",
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    if (activeDocument && activeDocument.id === docId) {
+      clearActiveDocument();
+    }
+    fetchAndRenderDocuments();
+    fetchDocumentCount();
+  } catch (err) {
+    alert(`Failed to delete: ${err.message}`);
+  }
+}
+
+// --- Task Approvals & Emergency Stop ---
+
+async function showApprovalsModal() {
+  const modal = document.getElementById("approvalsModal");
+  const body = document.getElementById("modalApprovalsList");
+  body.innerHTML = '<p class="text-muted">Loading pending tasks...</p>';
+  modal.style.display = "flex";
+
+  try {
+    const res = await fetch("/api/v1/mobile/tasks/pending", {
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    const data = await res.json();
+    if (!data.tasks || data.tasks.length === 0) {
+      body.innerHTML = '<p>No pending approvals.</p>';
+      return;
+    }
+    body.innerHTML = data.tasks.map(t => `
+      <div style="background:#131d31; padding:12px; border-radius:6px; margin-bottom:10px;">
+        <div style="font-size:11px; color:#94a3b8;">Task ID: <code>${t.task_id}</code></div>
+        <div style="font-weight:600; margin:6px 0;">${escapeHtml(t.objective)}</div>
+        <div style="display:flex; gap:8px; margin-top:8px;">
+          <button class="btn-primary" style="flex:1;" onclick="resolveMobileTask('${t.task_id}', true)">Authorize</button>
+          <button class="estop-btn" style="flex:1;" onclick="resolveMobileTask('${t.task_id}', false)">Deny</button>
+        </div>
+      </div>
+    `).join("");
+  } catch (err) {
+    body.innerHTML = `<p>Error: ${err.message}</p>`;
+  }
+}
+
+function closeApprovalsModal() {
+  document.getElementById("approvalsModal").style.display = "none";
+}
+
+async function resolveMobileTask(taskId, approved) {
+  try {
+    const res = await fetch(`/api/v1/mobile/tasks/${taskId}/resolve`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${sessionToken}`
+      },
+      body: JSON.stringify({ approved: approved })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    showApprovalsModal();
+    checkStatus();
+  } catch (err) {
+    alert(`Action failed: ${err.message}`);
+  }
+}
+
+async function triggerMobileEmergencyStop() {
+  if (!confirm("TRIGGER WORKSTATION EMERGENCY STOP? All executions will halt!")) return;
+  try {
+    await fetch("/api/v1/mobile/emergency_stop", {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${sessionToken}` }
+    });
+    checkStatus();
+    alert("Emergency stop triggered.");
+  } catch (err) {
+    alert(`Failed: ${err.message}`);
+  }
+}
+
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
