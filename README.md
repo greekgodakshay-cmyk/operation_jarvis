@@ -146,7 +146,7 @@ The orchestrator coordinates 11 specialized agent execution roles backed by the 
 ## 7. GIT & GITHUB SYNCHRONIZATION
 
 - **Local Repository**: Standalone Git repository anchored at `C:\Users\Akshay aravind .rv\operation_jarvis` on branch `main`.
-- **Remote Synchronization**: Synchronized with private GitHub repository [`greekgodakshay-cmyk/operation_jarvis`](https://github.com/greekgodakshay-cmyk/operation_jarvis).
+- **Remote Synchronization**: Synchronized with public GitHub repository [`greekgodakshay-cmyk/operation_jarvis`](https://github.com/greekgodakshay-cmyk/operation_jarvis).
 - **Authentication**: Authenticated via Windows Credential Manager (`git:https://github.com`) without exposing tokens in logs or code.
 - **Zero-Leak Security**: Strict `.gitignore` excludes all local databases (`*.db`), ChatGPT archives, personal memory, virtual environments (`.venv/`), and environment files (`.env`).
 
