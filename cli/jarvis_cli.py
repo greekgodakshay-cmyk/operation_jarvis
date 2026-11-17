@@ -260,6 +260,121 @@ def cmd_youtube_concept(args):
     print("\n" + "=" * 65)
     print(f"Publish Action Gated: Level 3 Approval Required ({res['requires_approval_for_publish']})")
 
+def cmd_desktop(args):
+    from core.desktop_controller import desktop_controller
+    action_str = " ".join(args.action) if isinstance(args.action, list) else str(args.action)
+    res = desktop_controller.execute_cli_command(action_str)
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_open(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"open {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_close(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"close {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_restart(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"restart {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_focus(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"focus {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_minimize(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"minimize {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_maximize(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"maximize {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_restore(args):
+    from core.desktop_controller import desktop_controller
+    target = " ".join(args.target) if isinstance(args.target, list) else str(args.target)
+    res = desktop_controller.execute_cli_command(f"restore {target}")
+    if res.get("output"):
+        print(res["output"])
+    elif res.get("message"):
+        print(res["message"])
+
+def cmd_list_apps(args):
+    from core.desktop_controller import desktop_controller
+    res = desktop_controller.list_running_apps()
+    print(res.get("output", ""))
+
+def cmd_find_apps(args):
+    from core.desktop_controller import desktop_controller
+    q = " ".join(args.query) if hasattr(args, "query") and isinstance(args.query, list) else ""
+    apps = desktop_controller.find_installed_apps(filter_query=q)
+    lines = [f"• {a['name']} ({a['path']})" for a in apps[:20]]
+    print(f"[SUCCESS] Found {len(apps)} installed applications:\n" + "\n".join(lines))
+
+def cmd_ask(args):
+    from core.freshness_router import source_router
+    q = args.question
+    auth = getattr(args, "reddit", False)
+    res = source_router.answer_query(q, reddit_authorized=auth)
+    print(f"\n[JARVIS ROUTE: {res['route'].upper()}]\n" + "=" * 60)
+    print(res["reply"])
+    if res.get("sources"):
+        print("\nSources & Citations:")
+        for s in res["sources"]:
+            print(f"  • {s['title']} -> {s['url']}")
+    print("=" * 60)
+
+def cmd_wiki(args):
+    from registry.internet_gateway import internet_gateway
+    q = args.subject
+    sec = getattr(args, "section", None)
+    res = internet_gateway.get_wikipedia_article(q, section_title=sec)
+    if not res.get("ok"):
+        print(f"\n[WIKIPEDIA RETRIEVAL] {res.get('error', 'Article not found.')}")
+        return
+    print(f"\n[WIKIPEDIA] {res['title']}\n" + "=" * 60)
+    print(f"URL: {res['url']}")
+    print(f"Date: {res.get('published_date')}\n")
+    print(res.get("extract", "")[:1200])
+    if res.get("sections"):
+        print(f"\nAvailable Sections ({len(res['sections'])}):")
+        print(", ".join(res["sections"][:10]))
+    print("=" * 60)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Operation Jarvis CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -356,8 +471,83 @@ def main():
     p_yt.add_argument("--niche", type=str, default="bodybuilding_motivation", help="Content niche")
     p_yt.set_defaults(func=cmd_youtube_concept)
 
+    # desktop
+    p_desk = subparsers.add_parser("desktop")
+    p_desk.add_argument("action", nargs="*", help="Desktop action or application command")
+    p_desk.set_defaults(func=cmd_desktop)
+
+    # open
+    p_open = subparsers.add_parser("open")
+    p_open.add_argument("target", nargs="+", help="Application or folder to open")
+    p_open.set_defaults(func=cmd_open)
+
+    # close
+    p_close = subparsers.add_parser("close")
+    p_close.add_argument("target", nargs="+", help="Application to close")
+    p_close.set_defaults(func=cmd_close)
+
+    # restart
+    p_res = subparsers.add_parser("restart")
+    p_res.add_argument("target", nargs="+", help="Application to restart")
+    p_res.set_defaults(func=cmd_restart)
+
+    # focus
+    p_foc = subparsers.add_parser("focus")
+    p_foc.add_argument("target", nargs="+", help="Application window to focus")
+    p_foc.set_defaults(func=cmd_focus)
+
+    # minimize
+    p_min = subparsers.add_parser("minimize")
+    p_min.add_argument("target", nargs="+", help="Application window to minimize")
+    p_min.set_defaults(func=cmd_minimize)
+
+    # maximize
+    p_max = subparsers.add_parser("maximize")
+    p_max.add_argument("target", nargs="+", help="Application window to maximize")
+    p_max.set_defaults(func=cmd_maximize)
+
+    # restore
+    p_rst = subparsers.add_parser("restore")
+    p_rst.add_argument("target", nargs="+", help="Application window to restore")
+    p_rst.set_defaults(func=cmd_restore)
+
+    # list-apps
+    p_lapps = subparsers.add_parser("list-apps")
+    p_lapps.set_defaults(func=cmd_list_apps)
+
+    # find-apps
+    p_fapps = subparsers.add_parser("find-apps")
+    p_fapps.add_argument("query", nargs="*", help="Application name to search")
+    p_fapps.set_defaults(func=cmd_find_apps)
+
+    # ask
+    p_ask = subparsers.add_parser("ask")
+    p_ask.add_argument("question", type=str, help="Question to ask JARVIS")
+    p_ask.add_argument("--reddit", action="store_true", help="Authorize Reddit community research")
+    p_ask.set_defaults(func=cmd_ask)
+
+    # wiki
+    p_wiki = subparsers.add_parser("wiki")
+    p_wiki.add_argument("subject", type=str, help="Wikipedia subject or query")
+    p_wiki.add_argument("--section", type=str, default=None, help="Specific section title")
+    p_wiki.set_defaults(func=cmd_wiki)
+
+    # Direct single-string or natural action command interceptor
+    if len(sys.argv) == 2 and any(sys.argv[1].lower().startswith(pfx) for pfx in [
+        "open ", "launch ", "start ", "close ", "shut down ", "terminate ", "kill ",
+        "restart ", "focus ", "minimize ", "maximize ", "restore ", "list running", "find installed"
+    ]):
+        from core.desktop_controller import desktop_controller
+        res = desktop_controller.execute_cli_command(sys.argv[1])
+        if res.get("output"):
+            print(res["output"])
+        elif res.get("message"):
+            print(res["message"])
+        return
+
     args = parser.parse_args()
     args.func(args)
+
 
 if __name__ == "__main__":
     main()

@@ -10,6 +10,7 @@ import tempfile
 import time
 from typing import Any, Dict, List, Optional
 from core.types import PermissionLevel
+from core.desktop_controller import desktop_controller
 
 class DesktopAdapter:
     def __init__(self):
@@ -39,13 +40,22 @@ class DesktopAdapter:
         timeout: float = 30.0,
         **kwargs: Any
     ) -> Dict[str, Any]:
-        """Safely executes an agent-desktop CLI subcommand on Windows."""
-        if not self.is_available():
-            return {"ok": False, "error": "agent-desktop CLI is not installed or not in PATH."}
-
+        """Safely executes desktop commands via native execution engine or agent-desktop CLI."""
         raw_cmd = (subcommand or command or kwargs.get("sub_command") or "list-apps").strip()
         if not raw_cmd:
             raw_cmd = "list-apps"
+
+        # Check if this is a native desktop control instruction
+        lower_cmd = raw_cmd.lower()
+        if any(lower_cmd.startswith(prefix) for prefix in [
+            "open ", "launch ", "start ", "close ", "shut down ", "terminate ", "kill ",
+            "restart ", "focus ", "minimize ", "maximize ", "restore ", "list running", "find "
+        ]):
+            return desktop_controller.execute_cli_command(raw_cmd)
+
+        if not self.is_available():
+            # Fallback to desktop_controller
+            return desktop_controller.execute_cli_command(raw_cmd)
 
         # Guardrails against command chaining
         for char in [";", "&", "|", "`", "\n", "\r"]:

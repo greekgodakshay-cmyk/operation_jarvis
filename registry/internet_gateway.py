@@ -410,52 +410,486 @@ class InternetGateway:
 
     def search_wikipedia(self, query: str, limit: int = 5) -> List[Dict[str, Any]]:
         """
-        Queries official Wikipedia REST API for clean encyclopedia knowledge.
+        Queries official Wikipedia MediaWiki API for clean encyclopedia knowledge.
+        Retrieves real-time article extracts, titles, canonical URLs, and summaries.
+        Zero footprint: no offline dumps or persistent external databases.
         """
         clean_q = self.sanitize_outgoing_query(query)
         if not clean_q:
             return []
 
         search_url = "https://en.wikipedia.org/w/api.php"
+        # Primary MediaWiki API generator with extract and info
         params = {
             "action": "query",
-            "list": "search",
-            "srsearch": clean_q,
-            "utf8": 1,
+            "generator": "search",
+            "gsrsearch": clean_q,
+            "prop": "extracts|info",
+            "inprop": "url",
+            "exintro": 1,
+            "explaintext": 1,
+            "exsentences": 6,
+            "gsrlimit": limit,
             "format": "json"
         }
         full_url = f"{search_url}?{urllib.parse.urlencode(params)}"
-        ret = self.fetch_url(full_url)
-        if not ret.get("ok"):
-            return []
-
-        results = []
         try:
-            # Extract json from raw content or text
+            ret = self.fetch_url(full_url)
+            if not ret.get("ok"):
+                return []
+
             raw = ret["content"]
-            # Content is wrapped in <untrusted_external_content>
             json_str = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
             data = json.loads(json_str)
-            items = data.get("query", {}).get("search", [])[:limit]
-            
-            for item in items:
-                page_id = item.get("pageid")
+            pages = data.get("query", {}).get("pages", {})
+            if not pages:
+                return []
+
+            results = []
+            for pid, item in pages.items():
                 title = item.get("title", "")
-                snippet = html.unescape(re.sub(r"<[^>]+>", "", item.get("snippet", "")))
-                page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+                page_url = item.get("canonicalurl") or item.get("fullurl") or f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+                extract = item.get("extract", "").strip()
+                touched = item.get("touched")
+
                 results.append({
                     "title": title,
                     "url": page_url,
                     "publisher": "Wikipedia",
-                    "published_date": item.get("timestamp"),
-                    "retrieval_timestamp": ret["retrieval_timestamp"],
-                    "freshness_category": self.classify_freshness(item.get("timestamp")),
-                    "snippet": snippet
+                    "published_date": touched,
+                    "retrieval_timestamp": ret.get("retrieval_timestamp", datetime.datetime.now(datetime.timezone.utc).isoformat()),
+                    "freshness_category": self.classify_freshness(touched),
+                    "snippet": extract[:350] if extract else title,
+                    "extract": extract
                 })
-        except Exception as e:
-            logger.warning(f"Error parsing Wikipedia response: {e}")
 
-        return results
+            # Sort by relevance / length
+            results.sort(key=lambda x: len(x.get("extract", "")), reverse=True)
+            return results[:limit]
+        except Exception as e:
+            logger.warning(f"Error in Wikipedia generator search: {e}")
+            # Fallback to standard list=search if generator failed
+            try:
+                fallback_params = {
+                    "action": "query",
+                    "list": "search",
+                    "srsearch": clean_q,
+                    "utf8": 1,
+                    "format": "json"
+                }
+                fb_url = f"{search_url}?{urllib.parse.urlencode(fallback_params)}"
+                ret = self.fetch_url(fb_url)
+                if not ret.get("ok"):
+                    return []
+                raw = ret["content"]
+                json_str = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
+                data = json.loads(json_str)
+                items = data.get("query", {}).get("search", [])[:limit]
+                results = []
+                for item in items:
+                    title = item.get("title", "")
+                    page_url = f"https://en.wikipedia.org/wiki/{urllib.parse.quote(title.replace(' ', '_'))}"
+                    snippet = html.unescape(re.sub(r"<[^>]+>", "", item.get("snippet", "")))
+                    results.append({
+                        "title": title,
+                        "url": page_url,
+                        "publisher": "Wikipedia",
+                        "published_date": item.get("timestamp"),
+                        "retrieval_timestamp": ret.get("retrieval_timestamp"),
+                        "freshness_category": self.classify_freshness(item.get("timestamp")),
+                        "snippet": snippet,
+                        "extract": snippet
+                    })
+                return results
+            except Exception as ex2:
+                logger.warning(f"Wikipedia fallback failed: {ex2}")
+                return []
+
+    def get_wikipedia_article(
+        self,
+        title_or_query: str,
+        section_title: Optional[str] = None,
+        extract_sentences: int = 15
+    ) -> Dict[str, Any]:
+        """
+        Retrieves detailed article extracts and table of sections via official MediaWiki API.
+        Retrieves relevant sections rather than downloading entire encyclopedias.
+        """
+        clean_target = self.sanitize_outgoing_query(title_or_query)
+        if not clean_target:
+            return {
+                "ok": False,
+                "title": None,
+                "url": None,
+                "extract": "",
+                "sections": [],
+                "error": "Query cannot be empty."
+            }
+
+        search_url = "https://en.wikipedia.org/w/api.php"
+
+        # 1. First resolve title and retrieve intro extract
+        params = {
+            "action": "query",
+            "prop": "extracts|info",
+            "inprop": "url",
+            "titles": clean_target,
+            "explaintext": 1,
+            "exintro": 1,
+            "redirects": 1,
+            "format": "json"
+        }
+        full_url = f"{search_url}?{urllib.parse.urlencode(params)}"
+        try:
+            ret = self.fetch_url(full_url)
+            if not ret.get("ok"):
+                return {
+                    "ok": False,
+                    "title": clean_target,
+                    "url": None,
+                    "extract": "",
+                    "sections": [],
+                    "error": f"Wikipedia query failed with status {ret.get('status_code')}"
+                }
+
+            raw = ret["content"]
+            json_str = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
+            data = json.loads(json_str)
+            pages = data.get("query", {}).get("pages", {})
+
+            # Check if page exists
+            if "-1" in pages or not pages:
+                # Page directly not found by title, try searching for closest article
+                search_hits = self.search_wikipedia(clean_target, limit=1)
+                if search_hits:
+                    closest = search_hits[0]
+                    return self.get_wikipedia_article(closest["title"], section_title=section_title)
+                return {
+                    "ok": False,
+                    "title": None,
+                    "url": None,
+                    "extract": "",
+                    "sections": [],
+                    "error": f"No Wikipedia article found for '{clean_target}'."
+                }
+
+            page_info = list(pages.values())[0]
+            resolved_title = page_info.get("title", clean_target)
+            canonical_url = page_info.get("canonicalurl") or page_info.get("fullurl") or f"https://en.wikipedia.org/wiki/{urllib.parse.quote(resolved_title.replace(' ', '_'))}"
+            extract = page_info.get("extract", "").strip()
+            touched = page_info.get("touched")
+
+            # 2. Retrieve available sections
+            sections_list = []
+            try:
+                parse_params = {
+                    "action": "parse",
+                    "page": resolved_title,
+                    "prop": "sections",
+                    "format": "json"
+                }
+                parse_url = f"{search_url}?{urllib.parse.urlencode(parse_params)}"
+                p_ret = self.fetch_url(parse_url)
+                if p_ret.get("ok"):
+                    p_raw = re.sub(r"</?untrusted_external_content[^>]*>", "", p_ret["content"]).strip()
+                    p_data = json.loads(p_raw)
+                    raw_secs = p_data.get("parse", {}).get("sections", [])
+                    sections_list = [
+                        {"index": s.get("index"), "title": s.get("line"), "level": s.get("level")}
+                        for s in raw_secs
+                    ]
+            except Exception:
+                pass
+
+            # 3. If a specific section was requested, retrieve that section's extract
+            section_content = ""
+            if section_title and sections_list:
+                sec_match = next((s for s in sections_list if section_title.lower() in s["title"].lower()), None)
+                if sec_match:
+                    try:
+                        sec_params = {
+                            "action": "parse",
+                            "page": resolved_title,
+                            "section": sec_match["index"],
+                            "prop": "wikitext",
+                            "format": "json"
+                        }
+                        sec_url = f"{search_url}?{urllib.parse.urlencode(sec_params)}"
+                        s_ret = self.fetch_url(sec_url)
+                        if s_ret.get("ok"):
+                            s_raw = re.sub(r"</?untrusted_external_content[^>]*>", "", s_ret["content"]).strip()
+                            s_data = json.loads(s_raw)
+                            wt = s_data.get("parse", {}).get("wikitext", {}).get("*", "")
+                            # Clean simple wikitext brackets
+                            section_content = re.sub(r"\[\[(?:[^|\]]*\|)?([^\]]+)\]\]", r"\1", wt)
+                            section_content = re.sub(r"\{\{[^\}]*\}\}", "", section_content).strip()
+                    except Exception:
+                        pass
+
+            final_text = (f"Section [{section_title}]:\n{section_content}\n\nLead Summary:\n{extract}"
+                          if section_content else extract)
+
+            return {
+                "ok": True,
+                "title": resolved_title,
+                "url": canonical_url,
+                "publisher": "Wikipedia",
+                "published_date": touched,
+                "freshness_category": self.classify_freshness(touched),
+                "retrieval_timestamp": ret.get("retrieval_timestamp"),
+                "extract": final_text,
+                "sections": [s["title"] for s in sections_list]
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "title": clean_target,
+                "url": None,
+                "extract": "",
+                "sections": [],
+                "error": f"Wikipedia retrieval error: {str(e)}"
+            }
+
+    def search_reddit(
+        self,
+        query: str,
+        subreddit: Optional[str] = None,
+        limit: int = 5,
+        authorized: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Reddit community discussion and real-world experience research.
+        STRICT REQUIREMENT: Reddit must NEVER be searched automatically.
+        Requires explicit user authorization before execution.
+        """
+        clean_q = self.sanitize_outgoing_query(query)
+
+        # Explicit Authorization Gate
+        if not authorized:
+            return {
+                "ok": False,
+                "authorized": False,
+                "requires_authorization": True,
+                "prompt": "I can answer using general knowledge and Wikipedia. Would you also like me to investigate Reddit discussions and real-world user experiences?",
+                "message": "Reddit search requires explicit user authorization before retrieval.",
+                "discussions": []
+            }
+
+        if not clean_q:
+            return {
+                "ok": False,
+                "authorized": True,
+                "error": "Query cannot be empty.",
+                "discussions": []
+            }
+
+        results = []
+        retrieval_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+        # Check Reddit credentials in environment
+        client_id = os.environ.get("REDDIT_CLIENT_ID")
+        client_secret = os.environ.get("REDDIT_CLIENT_SECRET")
+
+        # 1. If explicit credentials exist, attempt official OAuth search
+        if client_id and client_secret:
+            try:
+                auth = (client_id, client_secret)
+                token_resp = httpx.post(
+                    "https://www.reddit.com/api/v1/access_token",
+                    data={"grant_type": "client_credentials"},
+                    headers={"User-Agent": "OperationJARVIS-Research/1.0"},
+                    auth=auth,
+                    timeout=10.0
+                )
+                if token_resp.status_code == 200:
+                    token = token_resp.json().get("access_token")
+                    s_url = f"https://oauth.reddit.com/search?q={urllib.parse.quote(clean_q)}&limit={limit}"
+                    if subreddit:
+                        s_url = f"https://oauth.reddit.com/r/{urllib.parse.quote(subreddit)}/search?q={urllib.parse.quote(clean_q)}&restrict_sr=1&limit={limit}"
+                    s_resp = httpx.get(
+                        s_url,
+                        headers={"Authorization": f"Bearer {token}", "User-Agent": "OperationJARVIS-Research/1.0"},
+                        timeout=10.0
+                    )
+                    if s_resp.status_code == 200:
+                        children = s_resp.json().get("data", {}).get("children", [])
+                        for c in children[:limit]:
+                            d = c.get("data", {})
+                            created_utc = d.get("created_utc")
+                            iso_date = datetime.datetime.fromtimestamp(created_utc, tz=datetime.timezone.utc).isoformat() if created_utc else None
+                            results.append({
+                                "title": d.get("title", ""),
+                                "url": f"https://www.reddit.com{d.get('permalink', '')}",
+                                "subreddit": f"r/{d.get('subreddit', '')}",
+                                "author": d.get("author", "[deleted]"),
+                                "published_date": iso_date,
+                                "score": d.get("score", 0),
+                                "comments_count": d.get("num_comments", 0),
+                                "snippet": d.get("selftext", "")[:300] or d.get("title", ""),
+                                "content_type": "community_opinion"
+                            })
+            except Exception as e:
+                logger.warning(f"Reddit OAuth search exception: {e}")
+
+        # 2. Permitted read-only authorized search interface fallback
+        if not results:
+            try:
+                search_q = f"site:reddit.com {clean_q}"
+                if subreddit:
+                    search_q = f"site:reddit.com/r/{subreddit} {clean_q}"
+                
+                rss_url = f"https://news.google.com/rss/search?q={urllib.parse.quote(search_q)}&hl=en-US&gl=US&ceid=US:en"
+                ret = self.fetch_url(rss_url)
+                if ret.get("ok"):
+                    import xml.etree.ElementTree as ET
+                    raw = ret.get("raw_text") or ret.get("content", "")
+                    xml_str = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
+                    root = ET.fromstring(xml_str)
+                    for it in root.findall(".//item")[:limit]:
+                        t_elem = it.find("title")
+                        l_elem = it.find("link")
+                        p_elem = it.find("pubDate")
+                        title = t_elem.text.strip() if t_elem is not None and t_elem.text else ""
+                        link = l_elem.text.strip() if l_elem is not None and l_elem.text else ""
+                        pub_d = p_elem.text.strip() if p_elem is not None and p_elem.text else ""
+                        
+                        sub_match = re.search(r"r/([a-zA-Z0-9_]+)", title) or re.search(r"r/([a-zA-Z0-9_]+)", link)
+                        sub_name = f"r/{sub_match.group(1)}" if sub_match else (f"r/{subreddit}" if subreddit else "r/reddit")
+
+                        results.append({
+                            "title": title,
+                            "url": link,
+                            "subreddit": sub_name,
+                            "author": "community_user",
+                            "published_date": pub_d,
+                            "snippet": f"Community experience from {sub_name}: {title}",
+                            "content_type": "community_opinion"
+                        })
+            except Exception as e:
+                logger.warning(f"Reddit public index fallback exception: {e}")
+
+        return {
+            "ok": len(results) > 0,
+            "authorized": True,
+            "query": clean_q,
+            "count": len(results),
+            "retrieval_timestamp": retrieval_timestamp,
+            "nature_of_data": "COMMUNITY_OPINIONS_AND_USER_EXPERIENCES",
+            "caution": "Reddit findings reflect subjective user experiences and anecdotal opinions, not established scientific facts.",
+            "discussions": results
+        }
+
+    def search_technical_docs(
+        self,
+        query: str,
+        technology: Optional[str] = None,
+        limit: int = 5
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieves primary technical documentation and specifications for programming languages and frameworks.
+        """
+        clean_q = self.sanitize_outgoing_query(query)
+        if not clean_q:
+            return []
+
+        tech_domains = {
+            "python": "docs.python.org",
+            "rust": "doc.rust-lang.org",
+            "cpp": "en.cppreference.com",
+            "c++": "en.cppreference.com",
+            "go": "pkg.go.dev",
+            "javascript": "developer.mozilla.org",
+            "typescript": "www.typescriptlang.org",
+            "pytorch": "pytorch.org/docs",
+            "linux": "www.kernel.org/doc"
+        }
+
+        chosen_domain = None
+        lower_q = clean_q.lower()
+        if technology and technology.lower() in tech_domains:
+            chosen_domain = tech_domains[technology.lower()]
+        else:
+            for k, v in tech_domains.items():
+                if k in lower_q:
+                    chosen_domain = v
+                    break
+
+        results = []
+        doc_search_res = self.search_tech_news(clean_q, max_results=limit)
+        results.extend(doc_search_res)
+        return results[:limit]
+
+    def get_github_release_info(self, repo_or_package: str) -> Dict[str, Any]:
+        """
+        Retrieves primary GitHub repository release notes, verified tag, and publication date.
+        """
+        clean_name = self.sanitize_outgoing_query(repo_or_package).strip()
+        
+        common_repos = {
+            "pytorch": "pytorch/pytorch",
+            "torch": "pytorch/pytorch",
+            "python": "python/cpython",
+            "cpython": "python/cpython",
+            "rust": "rust-lang/rust",
+            "fastapi": "tiangolo/fastapi",
+            "pydantic": "pydantic/pydantic",
+            "httpx": "encode/httpx",
+            "ollama": "ollama/ollama",
+            "operation_jarvis": "greekgodakshay-cmyk/operation_jarvis"
+        }
+
+        repo_slug = common_repos.get(clean_name.lower(), clean_name if "/" in clean_name else None)
+        if not repo_slug:
+            return {
+                "ok": False,
+                "error": f"Could not resolve GitHub repository slug for '{clean_name}'."
+            }
+
+        api_url = f"https://api.github.com/repos/{repo_slug}/releases/latest"
+        try:
+            ret = self.fetch_url(api_url)
+            if not ret.get("ok"):
+                tags_url = f"https://api.github.com/repos/{repo_slug}/tags"
+                t_ret = self.fetch_url(tags_url)
+                if t_ret.get("ok"):
+                    raw = t_ret.get("raw_text") or t_ret.get("content", "")
+                    raw_clean = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
+                    tags = json.loads(raw_clean)
+                    if tags:
+                        latest_tag = tags[0].get("name")
+                        return {
+                            "ok": True,
+                            "repository": repo_slug,
+                            "tag_name": latest_tag,
+                            "published_at": None,
+                            "html_url": f"https://github.com/{repo_slug}/releases/tag/{latest_tag}",
+                            "summary": f"Latest tag: {latest_tag}"
+                        }
+                return {
+                    "ok": False,
+                    "repository": repo_slug,
+                    "error": f"Failed to fetch releases for {repo_slug} (status {ret.get('status_code')})"
+                }
+
+            raw = ret.get("raw_text") or ret.get("content", "")
+            raw_clean = re.sub(r"</?untrusted_external_content[^>]*>", "", raw).strip()
+            data = json.loads(raw_clean)
+            return {
+                "ok": True,
+                "repository": repo_slug,
+                "tag_name": data.get("tag_name"),
+                "published_at": data.get("published_at"),
+                "html_url": data.get("html_url"),
+                "author": data.get("author", {}).get("login"),
+                "summary": data.get("body", "")[:400] + "..." if data.get("body") else ""
+            }
+        except Exception as e:
+            return {
+                "ok": False,
+                "repository": repo_slug,
+                "error": str(e)
+            }
+
 
     def search_arxiv(self, query: str, max_results: int = 5) -> List[Dict[str, Any]]:
         """

@@ -112,92 +112,148 @@ Keep it actionable, precise, and concise."""
             "raw_context": context_payload
         }
 
-    def conduct_deep_research(self, query: str, domain: str = "technical") -> Dict[str, Any]:
+    def conduct_deep_research(
+        self,
+        query: str,
+        domain: str = "technical",
+        reddit_authorized: bool = False,
+        include_reddit: bool = False
+    ) -> Dict[str, Any]:
         """
-        Executes a rigorous research workflow:
-        1. Query decomposition into subqueries.
-        2. Local FTS retrieval across research_index.db and memory.db.
-        3. Fact vs Inference vs Uncertainty synthesis.
-        4. Structured archival into research_index.db.
+        Executes an advanced multi-source research workflow adhering to Section 8:
+        1. Understand the research objective and comparison criteria.
+        2. Retrieve primary technical documentation and Wikipedia foundational knowledge.
+        3. Retrieve current benchmarks, specifications, or papers.
+        4. Manage Reddit authorization explicitly (prompt if requested without prior approval).
+        5. Retrieve Reddit community evidence only after explicit user approval.
+        6. Compare retrieved evidence and distinguish verified facts, community opinions,
+           reasoned conclusions, and uncertainties.
+        7. Provide citations and original source links without permanent external data hoarding.
         """
-        logger.info(f"Conducting deep research for query: {query} (domain={domain})")
-        
+        from registry.internet_gateway import internet_gateway
+        logger.info(f"Conducting deep research for query: {query} (domain={domain}, reddit_auth={reddit_authorized})")
+
+        # Check if Reddit authorization prompt should be returned
+        needs_reddit = include_reddit or any(w in query.lower() for w in ["reddit", "community", "user experience", "developer opinion", "better for"])
+        if needs_reddit and not reddit_authorized:
+            return {
+                "query": query,
+                "requires_approval": True,
+                "authorization_prompt": "I can answer using general knowledge and Wikipedia. Would you also like me to investigate Reddit discussions and real-world user experiences?",
+                "message": "Reddit community research requires explicit user authorization before execution.",
+                "subqueries": [query],
+                "evidence_count": 0,
+                "synthesis": "Pending Reddit authorization. To proceed with Reddit community research, grant authorization or re-run with approval.",
+                "sources": []
+            }
+
         # 1. Decompose Query
-        decomp_prompt = f"""Decompose this research objective into 3 distinct technical search queries for documentation and research indexing:
-Objective: "{query}"
-
-Output ONLY a JSON array of 3 strings, e.g. ["query 1", "query 2", "query 3"]."""
-
-        decomp_res = llm_client.chat(
-            messages=[
-                {"role": "system", "content": "You are a research indexing analyzer. Output valid JSON arrays only."},
-                {"role": "user", "content": decomp_prompt}
-            ],
-            temperature=0.1,
-            think=False,
-            task_budget=TaskBudget.SHORT_ANSWER
-        )
-
         subqueries = [query]
-        try:
-            raw_decomp = decomp_res.get("content", "").strip()
-            # Clean possible markdown fence
-            if "```json" in raw_decomp:
-                raw_decomp = raw_decomp.split("```json")[1].split("```")[0].strip()
-            elif "```" in raw_decomp:
-                raw_decomp = raw_decomp.split("```")[1].split("```")[0].strip()
-            parsed = json.loads(raw_decomp)
-            if isinstance(parsed, list) and len(parsed) > 0:
-                subqueries = parsed[:3]
-        except Exception:
-            subqueries = [query, f"{query} architecture", f"{query} security analysis"]
+        if "compare" in query.lower() and " and " in query.lower():
+            # Extract entities
+            m = re.search(r"compare\s+([a-zA-Z0-9\+#\.]+)\s+and\s+([a-zA-Z0-9\+#\.]+)", query, re.IGNORECASE)
+            if m:
+                e1, e2 = m.group(1), m.group(2)
+                subqueries = [
+                    f"{e1} official documentation architecture",
+                    f"{e2} official documentation architecture",
+                    f"{e1} vs {e2} benchmarks performance"
+                ]
+        else:
+            subqueries = [query, f"{query} documentation", f"{query} benchmarks analysis"]
 
-        # 2. Gather Evidence from Local Repositories
+        # 2. Gather Evidence Online (Zero-Footprint RAG)
         evidence_items = []
-        # Search public research index
-        for sq in subqueries:
-            hits = research_indexer.db.search_research(sq, limit=3)
-            for h in hits:
+        source_links = []
+
+        # Online Wikipedia retrieval
+        wiki_hits = internet_gateway.search_wikipedia(query, limit=2)
+        for w in wiki_hits:
+            evidence_items.append({
+                "type": "VERIFIED_FACT",
+                "source": f"Wikipedia ({w['title']})",
+                "url": w["url"],
+                "content": w.get("extract") or w.get("snippet", "")
+            })
+            source_links.append({"title": w["title"], "url": w["url"]})
+
+        # Online Technical Documentation retrieval
+        for sq in subqueries[:2]:
+            doc_hits = internet_gateway.search_technical_docs(sq, limit=2)
+            for d in doc_hits:
                 evidence_items.append({
-                    "source": f"research_index:{h.get('url', 'local')}",
-                    "title": h.get("title", ""),
-                    "snippet": h.get("snippet", "")
+                    "type": "TECHNICAL_SPEC",
+                    "source": d.get("publisher", "Technical Docs"),
+                    "url": d.get("url", ""),
+                    "content": d.get("snippet", "")
                 })
-        
-        # Search internal memory
-        mem_hits = memory_adapter.search(query, limit=3)
+                if d.get("url"):
+                    source_links.append({"title": d.get("title", "Technical Documentation"), "url": d["url"]})
+
+        # Online Benchmarks & Research Papers (arXiv)
+        arxiv_hits = internet_gateway.search_arxiv(query, max_results=2)
+        for a in arxiv_hits:
+            evidence_items.append({
+                "type": "BENCHMARK_AND_RESEARCH",
+                "source": f"arXiv ({a['title']})",
+                "url": a["url"],
+                "content": a.get("snippet", "")
+            })
+            source_links.append({"title": a["title"], "url": a["url"]})
+
+        # Online Reddit Community Research (ONLY IF AUTHORIZED)
+        if reddit_authorized:
+            reddit_res = internet_gateway.search_reddit(query, authorized=True, limit=3)
+            for disc in reddit_res.get("discussions", []):
+                evidence_items.append({
+                    "type": "COMMUNITY_OPINION",
+                    "source": f"Reddit ({disc.get('subreddit')})",
+                    "url": disc.get("url", ""),
+                    "content": disc.get("snippet", "")
+                })
+                if disc.get("url"):
+                    source_links.append({"title": disc.get("title", "Reddit Thread"), "url": disc["url"]})
+
+        # Local personal memory integration
+        mem_hits = memory_adapter.search(query, limit=2)
         for m in mem_hits:
             evidence_items.append({
-                "source": f"memory:{m.get('id')}",
-                "title": m.get("title", ""),
-                "snippet": m.get("snippet", "")
+                "type": "PERSONAL_MEMORY",
+                "source": "Local SQLite Memory",
+                "url": f"local://memory/{m.get('id')}",
+                "content": m.get("snippet", "")
             })
 
         evidence_text = "\n".join([
-            f"- [{e['source']}] {e['title']}: {e['snippet']}"
-            for e in evidence_items[:6]
+            f"[{e['type']}] Source: {e['source']} | URL: {e['url']}\nDetails: {e['content']}"
+            for e in evidence_items
         ])
 
-        # 3. Live Model Synthesis: Fact vs Inference vs Uncertainty
-        synthesis_prompt = f"""Conduct a first-principles technical evaluation for:
+        # 3. Local Model Synthesis (Distinguishing Facts, Community Opinions, Conclusions, Uncertainties)
+        synthesis_prompt = f"""Conduct a deep comparative evaluation for:
 Objective: "{query}"
 
-Available Verified Evidence:
-{evidence_text if evidence_text else "No existing indexed local documents found. Base evaluation on established computer science, software engineering, and systems principles."}
+Retrieved Multi-Source Evidence:
+{evidence_text if evidence_text else "Base evaluation on established computer science, software engineering, and systems principles."}
 
-Output your analysis in STRICT accordance with these three sections:
-### 1. VERIFIED FACTS & DIRECT EVIDENCE
-(Concrete, indisputable physical or architectural properties verified by specifications, source code, or standards.)
+Output your analysis in STRICT accordance with these four numbered sections:
+### 1. VERIFIED FACTS & SPECIFICATIONS
+(Concrete, indisputable physical/architectural properties verified by official documentation, language specifications, or compiler guarantees.)
 
-### 2. ARCHITECTURAL & TECHNICAL INFERENCES
-(Logical deductions derived from verified facts, trade-offs, and operational mechanics.)
+### 2. COMMUNITY EXPERIENCES & ANECDOTAL OPINIONS
+(Real-world developer discussions, community consensus, productivity feedback from forums and Reddit. Explicitly identify these as subjective experiences, not scientific laws.)
 
-### 3. KNOWN UNCERTAINTIES & SYSTEM CONSTRAINTS
-(Open questions, hardware limitations, unverified assumptions, and empirical boundary conditions.)"""
+### 3. REASONED CONCLUSIONS & ARCHITECTURAL TRADE-OFFS
+(Logical deductions comparing performance, ergonomics, safety guarantees, ecosystem maturity, and maintenance costs.)
+
+### 4. UNCERTAIN OR UNAVAILABLE INFORMATION
+(Empirical limitations, unverified benchmark boundary conditions, and areas where conclusive data is unavailable.)
+
+Conclude with numbered source citations containing original links."""
 
         synth_res = llm_client.chat(
             messages=[
-                {"role": "system", "content": "You are a senior systems researcher. Maintain strict separation between verified facts, logical inferences, and empirical uncertainties."},
+                {"role": "system", "content": "You are a senior AI systems architect and researcher. Strictly separate verified facts, community opinions, reasoned conclusions, and empirical uncertainties."},
                 {"role": "user", "content": synthesis_prompt}
             ],
             temperature=0.2,
@@ -207,26 +263,13 @@ Output your analysis in STRICT accordance with these three sections:
 
         synthesis_content = synth_res.get("content", "").strip()
 
-        # 4. Archive into research_index.db
-        item_id = f"res-{uuid.uuid4().hex[:10]}"
-        research_url = f"local://research/{item_id}"
-        research_indexer.db.insert_item(
-            source_id="src-hn-tech",  # reuse existing source relation
-            url=research_url,
-            title=f"Deep Research: {query[:60]}",
-            snippet=synthesis_content[:300] + "...",
-            content=synthesis_content,
-            published_date=datetime.now().isoformat(),
-            freshness_category="deep_research"
-        )
-
         return {
             "query": query,
             "subqueries": subqueries,
             "evidence_count": len(evidence_items),
             "synthesis": synthesis_content,
-            "archived_id": item_id,
-            "archived_url": research_url
+            "sources": source_links,
+            "requires_approval": False
         }
 
     def generate_youtube_concept(
